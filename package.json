@@ -1,0 +1,22 @@
+{
+  "name": "cookieflare",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CookieCloud-compatible API on Cloudflare Workers and KV",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "check": "tsc --noEmit && wrangler deploy --dry-run",
+    "test": "vitest run",
+    "verify": "npm run types && npm run check && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "latest",
+    "vitest": "latest",
+    "wrangler": "latest"
+  }
+}
