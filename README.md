@@ -18,7 +18,7 @@ It stores only CookieCloud's encrypted payload. Cookieflare never decrypts cooki
 
 ### Requirements
 
-- Node.js 20 or later
+- Node.js 22 or later
 - A Cloudflare account with Workers and KV access
 - A domain managed by Cloudflare only if you want a custom hostname
 
@@ -52,6 +52,12 @@ npx wrangler secret put COOKIECLOUD_UUID
 ```bash
 npm run verify
 npm run deploy
+```
+
+For a custom domain and account-specific bindings, keep those values in the ignored `wrangler.production.jsonc` and deploy it explicitly:
+
+```bash
+npx wrangler deploy --config wrangler.production.jsonc
 ```
 
 Without a route, Wrangler provides a `workers.dev` URL in its deployment output. To use your own hostname, add a custom domain route such as:
@@ -92,12 +98,34 @@ KV is eventually consistent, so a newly uploaded value can take some time to bec
 | `GET /get/:uuid` | Retrieve the encrypted payload |
 | `POST /get/:uuid` | CookieCloud-compatible download method |
 | `GET /health` | Health check |
+| `GET /admin` | Read-only operations page protected by Cloudflare Access |
+| `GET /admin/status` | Read-only sync metadata for the operations page |
 
 The download endpoints always return encrypted data, even when a password is supplied. Decryption stays on the client.
 
+## Read-only admin page
+
+Cookieflare includes a small read-only page at `/admin`. It shows whether a payload exists, its size, crypto type, and last upload time. It never returns or decrypts the encrypted cookie payload.
+
+The page validates the Cloudflare Access JWT itself. Set up a Self-hosted Access application for only `<your-domain>/admin*`, then allow your own identity. Do not protect the entire hostname, because the CookieCloud API endpoints must remain reachable by clients. See Cloudflare's [application paths documentation](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/).
+
+Copy the Access team domain and Application Audience (AUD) tag into your private production configuration or Worker environment variables:
+
+```jsonc
+"vars": {
+  "ADMIN_ACCESS_TEAM_DOMAIN": "https://your-team.cloudflareaccess.com",
+  "ADMIN_ACCESS_AUD": "your-application-aud-tag",
+  "ADMIN_ACCESS_ALLOWED_EMAILS": "you@example.com"
+}
+```
+
+`ADMIN_ACCESS_ALLOWED_EMAILS` is optional and accepts a comma-separated allowlist. Deploy with the private configuration, then open `https://<your-domain>/admin` after signing in through Cloudflare Access. If the Access variables are missing, the page intentionally returns `503`.
+
+Cloudflare's [JWT validation guide](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) explains where to find the team domain and AUD tag.
+
 ## Operations
 
-The project has no application admin panel. Use the Cloudflare dashboard to inspect Worker metrics, errors, and Observability logs, or stream live events with:
+Use the Cloudflare dashboard to inspect Worker metrics, errors, and Observability logs, or stream live events with:
 
 ```bash
 npx wrangler tail

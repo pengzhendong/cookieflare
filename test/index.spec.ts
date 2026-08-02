@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import worker, { type WorkerEnv } from "../src/index";
 
@@ -245,5 +246,93 @@ describe("CookieCloud Worker", () => {
 
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-methods")).toContain("POST");
+  });
+
+  it("protects the read-only admin page with Cloudflare Access", async () => {
+    const env = makeEnv();
+    const teamDomain = "https://cookieflare-access.example.test";
+    const audience = "cookieflare-admin-audience";
+    env.ADMIN_ACCESS_TEAM_DOMAIN = teamDomain;
+    env.ADMIN_ACCESS_AUD = audience;
+
+    const unauthorized = await invoke(
+      new Request("https://example.test/admin"),
+      env,
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const { privateKey, publicKey } = await generateKeyPair("RS256");
+    const publicJwk = await exportJWK(publicKey);
+    publicJwk.kid = "test-key";
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (input, init) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (url === `${teamDomain}/cdn-cgi/access/certs`) {
+          return new Response(JSON.stringify({ keys: [publicJwk] }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return originalFetch(input, init);
+      },
+    );
+
+    try {
+      const token = await new SignJWT({ email: "admin@example.test" })
+        .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
+        .setIssuer(teamDomain)
+        .setAudience(audience)
+        .setIssuedAt()
+        .setExpirationTime("5m")
+        .sign(privateKey);
+
+      const update = await invoke(
+        new Request("https://example.test/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uuid: "test-cookiecloud-uuid",
+            encrypted: "admin-visible-metadata-only",
+            crypto_type: "aes-128-cbc-fixed",
+          }),
+        }),
+        env,
+      );
+      expect(update.status).toBe(200);
+
+      const page = await invoke(
+        new Request("https://example.test/admin", {
+          headers: { "Cf-Access-Jwt-Assertion": token },
+        }),
+        env,
+      );
+      expect(page.status).toBe(200);
+      expect(page.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+      expect(await page.text()).toContain("Private operations dashboard");
+
+      const status = await invoke(
+        new Request("https://example.test/admin/status", {
+          headers: { "Cf-Access-Jwt-Assertion": token },
+        }),
+        env,
+      );
+      expect(status.status).toBe(200);
+      expect(await status.json()).toMatchObject({
+        status: "ok",
+        storage: "cloudflare-kv",
+        authenticated_as: "admin@example.test",
+        payload: {
+          present: true,
+          bytes: new TextEncoder().encode("admin-visible-metadata-only").byteLength,
+          crypto_type: "aes-128-cbc-fixed",
+        },
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 });

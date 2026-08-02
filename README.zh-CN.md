@@ -18,7 +18,7 @@ Cookieflare 是一个运行在 [Cloudflare Workers](https://workers.cloudflare.c
 
 ### 环境要求
 
-- Node.js 20 或更高版本
+- Node.js 22 或更高版本
 - 具备 Workers 和 KV 权限的 Cloudflare 账号
 - 只有使用自定义域名时才需要将域名托管在 Cloudflare
 
@@ -52,6 +52,12 @@ npx wrangler secret put COOKIECLOUD_UUID
 ```bash
 npm run verify
 npm run deploy
+```
+
+如果使用自定义域名和账号专属绑定，请将这些值保存在已被忽略的 `wrangler.production.jsonc` 中，并显式使用它部署：
+
+```bash
+npx wrangler deploy --config wrangler.production.jsonc
 ```
 
 不配置路由时，Wrangler 会在部署输出中提供 `workers.dev` 地址。如果要使用自己的域名，可以添加类似下面的 Custom Domain 配置：
@@ -92,12 +98,34 @@ KV 是最终一致性存储，新上传的数据在其他地区可见前可能�
 | `GET /get/:uuid` | 获取加密数据 |
 | `POST /get/:uuid` | 兼容 CookieCloud 的下载方式 |
 | `GET /health` | 健康检查 |
+| `GET /admin` | 由 Cloudflare Access 保护的只读运维页面 |
+| `GET /admin/status` | 提供给运维页面的只读同步元数据 |
 
 下载接口始终返回加密数据，即使请求带有密码，也不会在 Worker 端解密，解密过程留在客户端。
 
+## 只读运维页面
+
+Cookieflare 提供了一个 `/admin` 只读页面，用来查看是否存在同步数据、数据大小、加密类型和最近上传时间。它不会返回或解密加密后的 Cookie 数据。
+
+页面会自行校验 Cloudflare Access JWT。请在 Cloudflare Zero Trust 中创建 Self-hosted 应用，只保护 `<你的域名>/admin*`，并只允许自己的身份访问。不要保护整个域名，否则 CookieCloud 客户端将无法访问 API 接口。具体可参考 Cloudflare 的[应用路径文档](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)。
+
+将 Access team domain 和应用的 Audience（AUD）标签写入本地私有生产配置或 Worker 环境变量：
+
+```jsonc
+"vars": {
+  "ADMIN_ACCESS_TEAM_DOMAIN": "https://your-team.cloudflareaccess.com",
+  "ADMIN_ACCESS_AUD": "your-application-aud-tag",
+  "ADMIN_ACCESS_ALLOWED_EMAILS": "you@example.com"
+}
+```
+
+`ADMIN_ACCESS_ALLOWED_EMAILS` 是可选的，支持用逗号分隔多个邮箱。使用私有配置部署后，先通过 Cloudflare Access 登录，再访问 `https://<你的域名>/admin`。如果没有配置 Access 变量，页面会故意返回 `503`，避免后台意外暴露。
+
+Access team domain 和 AUD 标签的获取位置见 Cloudflare 的 [JWT 校验文档](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)。
+
 ## 运维与查看
 
-项目本身没有应用级后台。可以在 Cloudflare 控制台查看 Worker 的请求、错误和 Observability 日志，也可以用下面的命令实时查看日志：
+可以在 Cloudflare 控制台查看 Worker 的请求、错误和 Observability 日志，也可以用下面的命令实时查看日志：
 
 ```bash
 npx wrangler tail

@@ -1,15 +1,30 @@
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+
 const MAX_COMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_DECOMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_ENCRYPTED_CHARS = 8 * 1024 * 1024;
 const COOKIE_STORE_PREFIX = "cookiecloud:v1:";
+const ADMIN_PATH = "/admin";
 
-export type WorkerEnv = Omit<Env, "API_ROOT"> & {
+export type WorkerEnv = Omit<
+  Env,
+  | "API_ROOT"
+  | "ADMIN_ACCESS_TEAM_DOMAIN"
+  | "ADMIN_ACCESS_AUD"
+  | "ADMIN_ACCESS_ALLOWED_EMAILS"
+> & {
   /** Optional path prefix for deployments behind a subpath. */
   API_ROOT?: string;
   /** Secret: the UUID configured in the CookieCloud client. */
   COOKIECLOUD_UUID?: string;
   /** Optional secret for protecting uploads from accidental overwrites. */
   COOKIECLOUD_UPDATE_TOKEN?: string;
+  /** Cloudflare Access team domain used to validate the admin JWT. */
+  ADMIN_ACCESS_TEAM_DOMAIN?: string;
+  /** Cloudflare Access application audience (AUD) tag. */
+  ADMIN_ACCESS_AUD?: string;
+  /** Optional comma-separated defense-in-depth email allowlist. */
+  ADMIN_ACCESS_ALLOWED_EMAILS?: string;
 };
 
 type UpdatePayload = Record<string, unknown>;
@@ -17,9 +32,18 @@ type UpdatePayload = Record<string, unknown>;
 interface StoredRecord {
   encrypted: string;
   crypto_type: string;
+  updated_at?: string;
 }
 
 type LogFields = Record<string, boolean | number | string>;
+
+interface AdminIdentity {
+  email: string | null;
+}
+
+type AdminAuthResult =
+  | { identity: AdminIdentity }
+  | { response: Response };
 
 class HttpError extends Error {
   constructor(
@@ -33,6 +57,131 @@ class HttpError extends Error {
 function logError(event: string, fields: LogFields = {}): void {
   console.error(JSON.stringify({ event, ...fields }));
 }
+
+const accessJwkSets = new Map<
+  string,
+  ReturnType<typeof createRemoteJWKSet>
+>();
+
+const adminSecurityHeaders: HeadersInit = {
+  "Cache-Control": "no-store",
+  "Content-Security-Policy":
+    "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+};
+
+const ADMIN_HTML = String.raw`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cookieflare · Admin</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f4f5f7;
+        color: #202124;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { background: #17181b; color: #f2f3f5; }
+        .card { background: #222428; border-color: #35383e; }
+        .muted { color: #aeb4bd; }
+        .value { color: #f2f3f5; }
+        button { background: #f2f3f5; color: #17181b; }
+      }
+      body { margin: 0; min-height: 100vh; }
+      main { box-sizing: border-box; max-width: 920px; margin: 0 auto; padding: 56px 22px 48px; }
+      .eyebrow { color: #68707d; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+      h1 { margin: 10px 0 8px; font-size: clamp(32px, 6vw, 52px); letter-spacing: -.04em; }
+      .intro { max-width: 640px; margin: 0; color: #68707d; line-height: 1.65; }
+      @media (prefers-color-scheme: dark) { .eyebrow, .intro { color: #aeb4bd; } }
+      .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 34px 0 16px; }
+      .toolbar h2 { margin: 0; font-size: 18px; }
+      button { border: 0; border-radius: 999px; padding: 10px 16px; background: #202124; color: #fff; cursor: pointer; font: inherit; font-weight: 700; }
+      button:disabled { cursor: wait; opacity: .65; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+      .card { min-height: 104px; box-sizing: border-box; padding: 20px; border: 1px solid #dde1e7; border-radius: 18px; background: #fff; }
+      .label { color: #68707d; font-size: 13px; }
+      .value { display: block; margin-top: 10px; color: #202124; font-size: 21px; font-weight: 750; overflow-wrap: anywhere; }
+      .muted { color: #68707d; font-size: 13px; }
+      .note { margin-top: 18px; padding: 16px 18px; border-left: 3px solid #6d5efc; border-radius: 8px; background: rgba(109, 94, 252, .09); line-height: 1.6; }
+      footer { margin-top: 36px; color: #68707d; font-size: 12px; line-height: 1.6; }
+      @media (prefers-color-scheme: dark) { footer { color: #aeb4bd; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">Private operations dashboard · 私有运维面板</div>
+      <h1>Cookieflare</h1>
+      <p class="intro">A read-only view of the CookieCloud sync service. Encrypted cookie contents are never displayed here.<br>这里只显示 CookieCloud 同步服务的只读状态，不会展示 Cookie 内容。</p>
+      <div class="toolbar">
+        <h2>Service status · 服务状态</h2>
+        <button id="refresh" type="button">Refresh · 刷新</button>
+      </div>
+      <section class="grid" aria-live="polite">
+        <article class="card"><span class="label">Service · 服务</span><strong class="value" id="service-status">Loading…</strong></article>
+        <article class="card"><span class="label">Storage · 存储</span><strong class="value" id="storage-status">Loading…</strong></article>
+        <article class="card"><span class="label">Payload · 数据</span><strong class="value" id="payload-status">Loading…</strong></article>
+        <article class="card"><span class="label">Cipher · 加密类型</span><strong class="value" id="crypto-type">—</strong></article>
+        <article class="card"><span class="label">Payload size · 数据大小</span><strong class="value" id="payload-size">—</strong></article>
+        <article class="card"><span class="label">Last upload · 最近上传</span><strong class="value" id="last-upload">—</strong></article>
+      </section>
+      <div class="note" id="message">Loading status… · 正在加载状态…</div>
+      <footer>Authenticated as · 当前身份：<span id="identity">—</span><br>Cookieflare stores only the encrypted CookieCloud payload in Cloudflare KV.</footer>
+    </main>
+    <script>
+      const refreshButton = document.getElementById('refresh');
+      const statusUrl = new URL(window.location.href);
+      statusUrl.pathname = statusUrl.pathname.replace(/\/$/, '') + '/status';
+
+      function setText(id, value) {
+        document.getElementById(id).textContent = value;
+      }
+
+      function formatBytes(bytes) {
+        if (typeof bytes !== 'number') return '—';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      }
+
+      function formatDate(value) {
+        if (!value) return 'Not available · 暂无';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+      }
+
+      async function loadStatus() {
+        refreshButton.disabled = true;
+        setText('message', 'Loading status… · 正在加载状态…');
+        try {
+          const response = await fetch(statusUrl, { credentials: 'same-origin', cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || 'Request failed');
+          setText('service-status', data.status === 'ok' ? 'Operational · 正常' : 'Degraded · 异常');
+          setText('storage-status', data.storage || '—');
+          setText('payload-status', data.payload && data.payload.present ? 'Available · 已同步' : 'Empty · 尚未上传');
+          setText('crypto-type', data.payload && data.payload.crypto_type || '—');
+          setText('payload-size', data.payload && data.payload.present ? formatBytes(data.payload.bytes) : '—');
+          setText('last-upload', data.payload && data.payload.present ? formatDate(data.payload.last_updated_at) : 'Not available · 暂无');
+          setText('identity', data.authenticated_as || 'Cloudflare Access user');
+          setText('message', data.payload && data.payload.present ? 'The latest encrypted payload is available. · 最新加密数据已存在。' : 'No encrypted payload has been uploaded yet. · 还没有上传加密数据。');
+        } catch (error) {
+          setText('service-status', 'Unavailable · 不可用');
+          setText('message', error instanceof Error ? error.message : 'Unable to load status');
+        } finally {
+          refreshButton.disabled = false;
+        }
+      }
+
+      refreshButton.addEventListener('click', loadStatus);
+      loadStatus();
+    </script>
+  </body>
+</html>`;
 
 const baseHeaders = (): HeadersInit => ({
   "Access-Control-Allow-Headers":
@@ -64,6 +213,41 @@ function textResponse(body: string, status: number): Response {
   });
 }
 
+function adminTextResponse(
+  body: string,
+  status: number,
+  extraHeaders: HeadersInit = {},
+): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      ...adminSecurityHeaders,
+      "Content-Type": "text/plain; charset=utf-8",
+      ...extraHeaders,
+    },
+  });
+}
+
+function adminJsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...adminSecurityHeaders,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+  });
+}
+
+function adminHtmlResponse(): Response {
+  return new Response(ADMIN_HTML, {
+    status: 200,
+    headers: {
+      ...adminSecurityHeaders,
+      "Content-Type": "text/html; charset=utf-8",
+    },
+  });
+}
+
 function normalizeApiRoot(value: string | undefined): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed || trimmed === "/") return "";
@@ -81,6 +265,99 @@ function keyForUuid(uuid: string): string {
 function configuredUuid(env: WorkerEnv): string | null {
   const uuid = env.COOKIECLOUD_UUID?.trim();
   return uuid ? uuid : null;
+}
+
+function configuredAccessTeamDomain(env: WorkerEnv): string | null {
+  const value = env.ADMIN_ACCESS_TEAM_DOMAIN?.trim();
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    ) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function configuredAccessAudience(env: WorkerEnv): string | null {
+  const audience = env.ADMIN_ACCESS_AUD?.trim();
+  return audience || null;
+}
+
+function configuredAdminEmails(env: WorkerEnv): string[] {
+  return (env.ADMIN_ACCESS_ALLOWED_EMAILS?.split(",") ?? [])
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function accessJwkSet(teamDomain: string): ReturnType<typeof createRemoteJWKSet> {
+  const cached = accessJwkSets.get(teamDomain);
+  if (cached) return cached;
+
+  const jwkSet = createRemoteJWKSet(
+    new URL(`${teamDomain}/cdn-cgi/access/certs`),
+  );
+  accessJwkSets.set(teamDomain, jwkSet);
+  return jwkSet;
+}
+
+function identityEmail(payload: JWTPayload): string | null {
+  return typeof payload.email === "string" && payload.email.trim()
+    ? payload.email.trim()
+    : null;
+}
+
+async function authorizeAdmin(
+  request: Request,
+  env: WorkerEnv,
+): Promise<AdminAuthResult> {
+  const teamDomain = configuredAccessTeamDomain(env);
+  const audience = configuredAccessAudience(env);
+  if (!teamDomain || !audience) {
+    logError("admin_access_misconfigured");
+    return {
+      response: adminTextResponse("Admin access is not configured", 503),
+    };
+  }
+
+  const token = request.headers.get("Cf-Access-Jwt-Assertion")?.trim();
+  if (!token) {
+    return {
+      response: adminTextResponse("Unauthorized", 401, {
+        "WWW-Authenticate": "Bearer",
+      }),
+    };
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, accessJwkSet(teamDomain), {
+      issuer: teamDomain,
+      audience,
+      algorithms: ["RS256"],
+    });
+    const email = identityEmail(payload);
+    const allowedEmails = configuredAdminEmails(env);
+    if (
+      allowedEmails.length > 0 &&
+      (!email || !allowedEmails.includes(email.toLowerCase()))
+    ) {
+      return { response: adminTextResponse("Forbidden", 403) };
+    }
+    return { identity: { email } };
+  } catch {
+    logError("admin_access_denied", { reason: "invalid_access_jwt" });
+    return { response: adminTextResponse("Forbidden", 403) };
+  }
 }
 
 async function constantTimeEqual(left: string, right: string): Promise<boolean> {
@@ -141,6 +418,28 @@ async function isAuthorizedUpdate(
 function readString(payload: UpdatePayload, key: string): string | null {
   const value = payload[key];
   return typeof value === "string" ? value : null;
+}
+
+function parseStoredRecord(value: string): StoredRecord | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const record = parsed as Partial<StoredRecord>;
+    if (typeof record.encrypted !== "string" || !record.encrypted) {
+      return null;
+    }
+    return {
+      encrypted: record.encrypted,
+      crypto_type:
+        typeof record.crypto_type === "string" ? record.crypto_type : "legacy",
+      updated_at:
+        typeof record.updated_at === "string" ? record.updated_at : undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function readStreamWithinLimit(
@@ -294,6 +593,7 @@ async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response>
   const record: StoredRecord = {
     encrypted,
     crypto_type: cryptoType,
+    updated_at: new Date().toISOString(),
   };
 
   try {
@@ -319,21 +619,89 @@ async function handleGet(uuid: string, env: WorkerEnv): Promise<Response> {
   }
   if (value === null) return textResponse("Not Found", 404);
 
-  try {
-    const record = JSON.parse(value) as Partial<StoredRecord>;
-    if (typeof record.encrypted !== "string" || !record.encrypted) {
-      logError("invalid_stored_record");
-      return textResponse("Internal Serverless Error", 500);
-    }
-    return jsonResponse({
-      encrypted: record.encrypted,
-      crypto_type:
-        typeof record.crypto_type === "string" ? record.crypto_type : "legacy",
-    });
-  } catch {
+  const record = parseStoredRecord(value);
+  if (!record) {
     logError("invalid_stored_record");
     return textResponse("Internal Serverless Error", 500);
   }
+  return jsonResponse({
+    encrypted: record.encrypted,
+    crypto_type: record.crypto_type,
+  });
+}
+
+async function handleAdminPage(
+  request: Request,
+  env: WorkerEnv,
+): Promise<Response> {
+  const authorization = await authorizeAdmin(request, env);
+  if ("response" in authorization) return authorization.response;
+  return adminHtmlResponse();
+}
+
+async function handleAdminStatus(
+  request: Request,
+  env: WorkerEnv,
+): Promise<Response> {
+  const authorization = await authorizeAdmin(request, env);
+  if ("response" in authorization) return authorization.response;
+
+  const uuid = configuredUuid(env);
+  if (!uuid) {
+    logError("missing_configuration", { key: "COOKIECLOUD_UUID" });
+    return adminJsonResponse(
+      { status: "degraded", message: "CookieCloud UUID is not configured" },
+      500,
+    );
+  }
+
+  let value: string | null;
+  try {
+    value = await env.COOKIE_STORE.get(keyForUuid(uuid), "text");
+  } catch {
+    logError("admin_kv_get_failed");
+    return adminJsonResponse(
+      { status: "degraded", message: "Unable to read storage" },
+      500,
+    );
+  }
+
+  if (value === null) {
+    return adminJsonResponse({
+      status: "ok",
+      storage: "cloudflare-kv",
+      uuid_configured: true,
+      payload: {
+        present: false,
+        bytes: null,
+        crypto_type: null,
+        last_updated_at: null,
+      },
+      authenticated_as: authorization.identity.email,
+    });
+  }
+
+  const record = parseStoredRecord(value);
+  if (!record) {
+    logError("invalid_stored_record");
+    return adminJsonResponse(
+      { status: "degraded", message: "Stored record is invalid" },
+      500,
+    );
+  }
+
+  return adminJsonResponse({
+    status: "ok",
+    storage: "cloudflare-kv",
+    uuid_configured: true,
+    payload: {
+      present: true,
+      bytes: new TextEncoder().encode(record.encrypted).byteLength,
+      crypto_type: record.crypto_type,
+      last_updated_at: record.updated_at ?? null,
+    },
+    authenticated_as: authorization.identity.email,
+  });
 }
 
 const worker: ExportedHandler<WorkerEnv> = {
@@ -345,6 +713,17 @@ const worker: ExportedHandler<WorkerEnv> = {
 
     if (request.method === "GET" && url.pathname === apiPath(apiRoot, "/health")) {
       return jsonResponse({ status: "OK", storage: "cloudflare-kv" });
+    }
+
+    if (request.method === "GET" && url.pathname === apiPath(apiRoot, ADMIN_PATH)) {
+      return handleAdminPage(request, env);
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname === apiPath(apiRoot, `${ADMIN_PATH}/status`)
+    ) {
+      return handleAdminStatus(request, env);
     }
 
     if (url.pathname === apiPath(apiRoot, "/") && request.method === "GET") {
