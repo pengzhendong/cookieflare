@@ -8,7 +8,7 @@ const ADMIN_USERNAME = "admin";
 
 export type WorkerEnv = Omit<
   Env,
-  "API_ROOT" | "ADMIN_PASSWORD" | "RATE_LIMITER"
+  "API_ROOT" | "ADMIN_PASSWORD" | "RATE_LIMITER" | "IP_RATE_LIMITER"
 > & {
   /** Optional path prefix for deployments behind a subpath. */
   API_ROOT?: string;
@@ -16,6 +16,8 @@ export type WorkerEnv = Omit<
   COOKIECLOUD_UPDATE_TOKEN?: string;
   /** Optional Cloudflare-native rate limiter for uploads. */
   RATE_LIMITER?: RateLimitBinding;
+  /** Optional secondary rate limiter for upload bursts from one client IP. */
+  IP_RATE_LIMITER?: RateLimitBinding;
   /** Secret used by the Basic Auth-protected admin page. */
   ADMIN_PASSWORD?: string;
 };
@@ -371,18 +373,29 @@ async function isAuthorizedUpdate(
 }
 
 async function enforceUploadRateLimit(
+  request: Request,
   uuid: string,
   env: WorkerEnv,
 ): Promise<Response | null> {
-  if (!env.RATE_LIMITER) return null;
+  const limiters: Array<{ binding: RateLimitBinding | undefined; key: string }> = [
+    { binding: env.RATE_LIMITER, key: `update:uuid:${uuid}` },
+    {
+      binding: env.IP_RATE_LIMITER,
+      key: `update:ip:${request.headers.get("CF-Connecting-IP")?.trim() || "unknown"}`,
+    },
+  ];
 
-  try {
-    const { success } = await env.RATE_LIMITER.limit({ key: `update:${uuid}` });
-    return success ? null : rateLimitResponse();
-  } catch {
-    logError("rate_limit_failed");
-    return textResponse("Service Unavailable", 503);
+  for (const { binding, key } of limiters) {
+    if (!binding) continue;
+    try {
+      const { success } = await binding.limit({ key });
+      if (!success) return rateLimitResponse();
+    } catch {
+      logError("rate_limit_failed");
+      return textResponse("Service Unavailable", 503);
+    }
   }
+  return null;
 }
 
 function readString(payload: UpdatePayload, key: string): string | null {
@@ -576,7 +589,7 @@ async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response>
   if (!(await isAuthorizedUpdate(request, env))) {
     return textResponse("Not Found", 404);
   }
-  const rateLimitError = await enforceUploadRateLimit(uuid, env);
+  const rateLimitError = await enforceUploadRateLimit(request, uuid, env);
   if (rateLimitError) return rateLimitError;
 
   const requestedCryptoType = readString(payload, "crypto_type")?.trim();

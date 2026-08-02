@@ -251,7 +251,7 @@ describe("CookieCloud Worker", () => {
       env,
     );
     expect(first.status).toBe(200);
-    expect(keys).toEqual(["update:rate-limited-uuid"]);
+    expect(keys).toEqual(["update:uuid:rate-limited-uuid"]);
 
     allowed = false;
     const second = await invoke(
@@ -273,6 +273,35 @@ describe("CookieCloud Worker", () => {
       env,
     );
     expect(await download.json()).toMatchObject({ encrypted: "first-payload" });
+  });
+
+  it("applies a secondary upload limit across UUIDs for one client IP", async () => {
+    const env = makeEnv();
+    const keys: string[] = [];
+    env.IP_RATE_LIMITER = {
+      limit: async ({ key }) => {
+        keys.push(key);
+        return { success: false };
+      },
+    };
+
+    const response = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": "203.0.113.10",
+        },
+        body: JSON.stringify({
+          uuid: "a-new-uuid",
+          encrypted: "payload",
+        }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(429);
+    expect(keys).toEqual(["update:ip:203.0.113.10"]);
   });
 
   it("rejects unsupported and malformed encodings", async () => {

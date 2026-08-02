@@ -52,7 +52,7 @@ npx wrangler secret put ADMIN_PASSWORD
 
 `COOKIECLOUD_UPDATE_TOKEN` 是可选项，仅适用于能够发送 `X-CookieCloud-Token` 或 Bearer Token 的自定义客户端。标准 CookieCloud 客户端通常无法添加自定义上传请求头，使用标准客户端时不要设置它。
 
-默认配置会按 UUID 将 `POST /update` 限制为每分钟 10 次，下载接口不受影响。该限制通过 `RATE_LIMITER` binding 实现。`namespace_id` 必须在你的 Cloudflare 账号内唯一；如果账号中已经使用 `2026080201`，请同时修改两份 Wrangler 配置。具体说明参见 Cloudflare 的 [Workers Rate Limiting 文档](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)。
+默认配置会将 `POST /update` 限制为每个 UUID 每分钟 10 次、每个客户端 IP 每分钟 30 次。UUID 限制保护单个数据空间，IP 限制则作为第二层防护，避免客户端快速创建大量随机 UUID。下载接口不受影响。两组 `namespace_id` 都必须在你的 Cloudflare 账号内唯一；如果账号中已经使用 `2026080201` 或 `2026080202`，请同时修改两份 Wrangler 配置。具体说明参见 Cloudflare 的 [Workers Rate Limiting 文档](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)。
 
 ### 4. 部署
 

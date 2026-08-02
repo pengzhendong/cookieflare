@@ -52,7 +52,7 @@ The admin username is fixed as `admin`. `ADMIN_PASSWORD` protects only `/admin` 
 
 `COOKIECLOUD_UPDATE_TOKEN` is optional and is intended for custom clients that can send `X-CookieCloud-Token` or a Bearer token. Leave it unset when using a standard CookieCloud client that cannot add custom upload headers.
 
-The default configuration limits `POST /update` to 10 requests per minute for each UUID. The limit is applied by the `RATE_LIMITER` binding and does not affect downloads. `namespace_id` must be unique within your Cloudflare account; change it in both Wrangler configurations if your account already uses `2026080201`. See Cloudflare's [Workers Rate Limiting documentation](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
+The default configuration limits `POST /update` to 10 requests per minute for each UUID and 30 requests per minute for each client IP. The UUID limit protects one namespace; the IP limit is a secondary guard against a client creating many random UUIDs. Downloads are not affected. Both `namespace_id` values must be unique within your Cloudflare account; change them in both Wrangler configurations if your account already uses `2026080201` or `2026080202`. See Cloudflare's [Workers Rate Limiting documentation](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 
 ### 4. Deploy
 
