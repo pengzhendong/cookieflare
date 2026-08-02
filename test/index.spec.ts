@@ -14,9 +14,9 @@ class MemoryKV {
   }
 }
 
-function makeEnv(updateToken?: string): WorkerEnv {
+function makeEnv(updateToken?: string, apiRoot = ""): WorkerEnv {
   return {
-    API_ROOT: "",
+    API_ROOT: apiRoot,
     COOKIE_STORE: new MemoryKV() as unknown as KVNamespace,
     COOKIECLOUD_UUID: "test-cookiecloud-uuid",
     COOKIECLOUD_UPDATE_TOKEN: updateToken,
@@ -124,6 +124,19 @@ describe("CookieCloud Worker", () => {
     });
   });
 
+  it("supports an API root prefix", async () => {
+    const response = await invoke(
+      new Request("https://example.test/sync/health"),
+      makeEnv(undefined, "sync"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "OK",
+      storage: "cloudflare-kv",
+    });
+  });
+
   it("rejects unknown UUIDs and protects updates with the optional token", async () => {
     const env = makeEnv("upload-token");
     const missingToken = await invoke(
@@ -150,7 +163,7 @@ describe("CookieCloud Worker", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-CookieCloud-Token": "upload-token",
+          Authorization: "Bearer upload-token",
         },
         body: JSON.stringify({
           uuid: "test-cookiecloud-uuid",
@@ -160,6 +173,68 @@ describe("CookieCloud Worker", () => {
       env,
     );
     expect(authorized.status).toBe(200);
+
+    const headerAuthorized = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CookieCloud-Token": "upload-token",
+        },
+        body: JSON.stringify({
+          uuid: "test-cookiecloud-uuid",
+          encrypted: "stored-after-header-check",
+        }),
+      }),
+      env,
+    );
+    expect(headerAuthorized.status).toBe(200);
+  });
+
+  it("rejects unsupported and malformed encodings", async () => {
+    const unsupported = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: {
+          "Content-Encoding": "br",
+          "Content-Type": "application/json",
+        },
+        body: "compressed-body",
+      }),
+      makeEnv(),
+    );
+    expect(unsupported.status).toBe(415);
+
+    const malformed = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: {
+          "Content-Encoding": "gzip",
+          "Content-Type": "application/json",
+        },
+        body: "not-gzip",
+      }),
+      makeEnv(),
+    );
+    expect(malformed.status).toBe(400);
+  });
+
+  it("returns a server error when the UUID secret is missing", async () => {
+    const env = makeEnv();
+    env.COOKIECLOUD_UUID = undefined;
+    const response = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uuid: "test-cookiecloud-uuid",
+          encrypted: "payload",
+        }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(500);
   });
 
   it("supports preflight without touching KV", async () => {

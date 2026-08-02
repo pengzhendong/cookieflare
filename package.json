@@ -5,6 +5,9 @@
   "description": "CookieCloud-compatible API on Cloudflare Workers and KV",
   "license": "GPL-3.0-only",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "wrangler dev --local",
     "deploy": "wrangler deploy",

@@ -1,9 +1,11 @@
-const MAX_COMPRESSED_BODY_BYTES = 25 * 1024 * 1024;
-const MAX_DECOMPRESSED_BODY_BYTES = 25 * 1024 * 1024;
-const MAX_ENCRYPTED_CHARS = 24 * 1024 * 1024;
+const MAX_COMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_DECOMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_ENCRYPTED_CHARS = 8 * 1024 * 1024;
 const COOKIE_STORE_PREFIX = "cookiecloud:v1:";
 
-export type WorkerEnv = Env & {
+export type WorkerEnv = Omit<Env, "API_ROOT"> & {
+  /** Optional path prefix for deployments behind a subpath. */
+  API_ROOT?: string;
   /** Secret: the UUID configured in the CookieCloud client. */
   COOKIECLOUD_UUID?: string;
   /** Optional secret for protecting uploads from accidental overwrites. */
@@ -17,6 +19,8 @@ interface StoredRecord {
   crypto_type: string;
 }
 
+type LogFields = Record<string, boolean | number | string>;
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -24,6 +28,10 @@ class HttpError extends Error {
   ) {
     super(message);
   }
+}
+
+function logError(event: string, fields: LogFields = {}): void {
+  console.error(JSON.stringify({ event, ...fields }));
 }
 
 const baseHeaders = (): HeadersInit => ({
@@ -75,10 +83,12 @@ function configuredUuid(env: WorkerEnv): string | null {
   return uuid ? uuid : null;
 }
 
-function constantTimeEqual(left: string, right: string): boolean {
-  const leftBytes = new TextEncoder().encode(left);
-  const rightBytes = new TextEncoder().encode(right);
-  if (leftBytes.byteLength !== rightBytes.byteLength) return false;
+async function constantTimeEqual(left: string, right: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [leftHash, rightHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(left)),
+    crypto.subtle.digest("SHA-256", encoder.encode(right)),
+  ]);
 
   const subtle = crypto.subtle as SubtleCrypto & {
     timingSafeEqual?: (
@@ -87,9 +97,11 @@ function constantTimeEqual(left: string, right: string): boolean {
     ) => boolean;
   };
   if (typeof subtle.timingSafeEqual === "function") {
-    return subtle.timingSafeEqual.call(crypto.subtle, leftBytes, rightBytes);
+    return subtle.timingSafeEqual.call(crypto.subtle, leftHash, rightHash);
   }
 
+  const leftBytes = new Uint8Array(leftHash);
+  const rightBytes = new Uint8Array(rightHash);
   let difference = 0;
   for (let index = 0; index < leftBytes.length; index += 1) {
     difference |= leftBytes[index] ^ rightBytes[index];
@@ -107,19 +119,23 @@ function extractBearerToken(request: Request): string | null {
   return token || null;
 }
 
-function isAuthorizedUuid(uuid: string, env: WorkerEnv): boolean {
+async function isAuthorizedUuid(uuid: string, env: WorkerEnv): Promise<boolean> {
   const expectedUuid = configuredUuid(env);
-  return expectedUuid !== null && constantTimeEqual(uuid, expectedUuid);
+  return expectedUuid !== null && (await constantTimeEqual(uuid, expectedUuid));
 }
 
-function isAuthorizedUpdate(request: Request, uuid: string, env: WorkerEnv): boolean {
-  if (!isAuthorizedUuid(uuid, env)) return false;
+async function isAuthorizedUpdate(
+  request: Request,
+  uuid: string,
+  env: WorkerEnv,
+): Promise<boolean> {
+  if (!(await isAuthorizedUuid(uuid, env))) return false;
 
   const expectedToken = env.COOKIECLOUD_UPDATE_TOKEN?.trim();
   if (!expectedToken) return true;
 
   const suppliedToken = extractBearerToken(request);
-  return suppliedToken !== null && constantTimeEqual(suppliedToken, expectedToken);
+  return suppliedToken !== null && (await constantTimeEqual(suppliedToken, expectedToken));
 }
 
 function readString(payload: UpdatePayload, key: string): string | null {
@@ -248,7 +264,10 @@ function uuidFromGetPath(pathname: string, apiRoot: string): string | null {
 }
 
 async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response> {
-  if (!configuredUuid(env)) return textResponse("Internal Serverless Error", 500);
+  if (!configuredUuid(env)) {
+    logError("missing_configuration", { key: "COOKIECLOUD_UUID" });
+    return textResponse("Internal Serverless Error", 500);
+  }
 
   let payload: UpdatePayload;
   try {
@@ -264,7 +283,7 @@ async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response>
   if (encrypted.length > MAX_ENCRYPTED_CHARS) {
     return textResponse("Payload Too Large", 413);
   }
-  if (!isAuthorizedUpdate(request, uuid, env)) {
+  if (!(await isAuthorizedUpdate(request, uuid, env))) {
     return textResponse("Not Found", 404);
   }
 
@@ -280,13 +299,14 @@ async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response>
   try {
     await env.COOKIE_STORE.put(keyForUuid(uuid), JSON.stringify(record));
   } catch {
+    logError("kv_put_failed");
     return textResponse("Internal Serverless Error", 500);
   }
   return jsonResponse({ action: "done" });
 }
 
 async function handleGet(uuid: string, env: WorkerEnv): Promise<Response> {
-  if (!configuredUuid(env) || !isAuthorizedUuid(uuid, env)) {
+  if (!configuredUuid(env) || !(await isAuthorizedUuid(uuid, env))) {
     return textResponse("Not Found", 404);
   }
 
@@ -294,6 +314,7 @@ async function handleGet(uuid: string, env: WorkerEnv): Promise<Response> {
   try {
     value = await env.COOKIE_STORE.get(keyForUuid(uuid), "text");
   } catch {
+    logError("kv_get_failed");
     return textResponse("Internal Serverless Error", 500);
   }
   if (value === null) return textResponse("Not Found", 404);
@@ -301,6 +322,7 @@ async function handleGet(uuid: string, env: WorkerEnv): Promise<Response> {
   try {
     const record = JSON.parse(value) as Partial<StoredRecord>;
     if (typeof record.encrypted !== "string" || !record.encrypted) {
+      logError("invalid_stored_record");
       return textResponse("Internal Serverless Error", 500);
     }
     return jsonResponse({
@@ -309,6 +331,7 @@ async function handleGet(uuid: string, env: WorkerEnv): Promise<Response> {
         typeof record.crypto_type === "string" ? record.crypto_type : "legacy",
     });
   } catch {
+    logError("invalid_stored_record");
     return textResponse("Internal Serverless Error", 500);
   }
 }

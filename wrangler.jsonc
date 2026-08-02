@@ -4,7 +4,12 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-02",
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false,
+      "head_sampling_rate": 1
+    }
   },
   "vars": {
     "API_ROOT": ""
