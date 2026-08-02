@@ -228,6 +228,53 @@ describe("CookieCloud Worker", () => {
     expect(headerAuthorized.status).toBe(200);
   });
 
+  it("rate limits uploads by UUID when the binding is configured", async () => {
+    const env = makeEnv();
+    const keys: string[] = [];
+    let allowed = true;
+    env.RATE_LIMITER = {
+      limit: async ({ key }) => {
+        keys.push(key);
+        return { success: allowed };
+      },
+    };
+
+    const first = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uuid: "rate-limited-uuid",
+          encrypted: "first-payload",
+        }),
+      }),
+      env,
+    );
+    expect(first.status).toBe(200);
+    expect(keys).toEqual(["update:rate-limited-uuid"]);
+
+    allowed = false;
+    const second = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uuid: "rate-limited-uuid",
+          encrypted: "second-payload",
+        }),
+      }),
+      env,
+    );
+    expect(second.status).toBe(429);
+    expect(second.headers.get("retry-after")).toBe("60");
+
+    const download = await invoke(
+      new Request("https://example.test/get/rate-limited-uuid"),
+      env,
+    );
+    expect(await download.json()).toMatchObject({ encrypted: "first-payload" });
+  });
+
   it("rejects unsupported and malformed encodings", async () => {
     const unsupported = await invoke(
       new Request("https://example.test/update", {

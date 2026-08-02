@@ -12,6 +12,7 @@ It stores only CookieCloud's encrypted payload. Cookieflare never decrypts cooki
 - Compatible with CookieCloud upload and download endpoints
 - Supports CookieCloud's gzip upload format
 - Isolates multiple clients by their own CookieCloud UUIDs
+- Rate-limits uploads per UUID with Cloudflare's native Rate Limiting API
 - Optional upload token for custom clients
 - Password-protected read-only operations page
 - Small, low-frequency storage model backed by Cloudflare KV
@@ -50,6 +51,8 @@ npx wrangler secret put ADMIN_PASSWORD
 The admin username is fixed as `admin`. `ADMIN_PASSWORD` protects only `/admin` and is separate from the CookieCloud UUID and client password. If you keep account-specific settings in `wrangler.production.jsonc`, append `--config wrangler.production.jsonc` to the command.
 
 `COOKIECLOUD_UPDATE_TOKEN` is optional and is intended for custom clients that can send `X-CookieCloud-Token` or a Bearer token. Leave it unset when using a standard CookieCloud client that cannot add custom upload headers.
+
+The default configuration limits `POST /update` to 10 requests per minute for each UUID. The limit is applied by the `RATE_LIMITER` binding and does not affect downloads. `namespace_id` must be unique within your Cloudflare account; change it in both Wrangler configurations if your account already uses `2026080201`. See Cloudflare's [Workers Rate Limiting documentation](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
 
 ### 4. Deploy
 

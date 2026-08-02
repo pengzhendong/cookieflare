@@ -8,15 +8,21 @@ const ADMIN_USERNAME = "admin";
 
 export type WorkerEnv = Omit<
   Env,
-  "API_ROOT" | "ADMIN_PASSWORD"
+  "API_ROOT" | "ADMIN_PASSWORD" | "RATE_LIMITER"
 > & {
   /** Optional path prefix for deployments behind a subpath. */
   API_ROOT?: string;
   /** Optional secret for protecting all uploads from accidental overwrites. */
   COOKIECLOUD_UPDATE_TOKEN?: string;
+  /** Optional Cloudflare-native rate limiter for uploads. */
+  RATE_LIMITER?: RateLimitBinding;
   /** Secret used by the Basic Auth-protected admin page. */
   ADMIN_PASSWORD?: string;
 };
+
+interface RateLimitBinding {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
 
 type UpdatePayload = Record<string, unknown>;
 
@@ -213,6 +219,20 @@ function adminJsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function rateLimitResponse(): Response {
+  return new Response(
+    JSON.stringify({ action: "error", message: "Rate limit exceeded" }),
+    {
+      status: 429,
+      headers: {
+        ...baseHeaders(),
+        "Content-Type": "application/json; charset=utf-8",
+        "Retry-After": "60",
+      },
+    },
+  );
+}
+
 function adminHtmlResponse(): Response {
   return new Response(ADMIN_HTML, {
     status: 200,
@@ -348,6 +368,21 @@ async function isAuthorizedUpdate(
 
   const suppliedToken = extractBearerToken(request);
   return suppliedToken !== null && (await constantTimeEqual(suppliedToken, expectedToken));
+}
+
+async function enforceUploadRateLimit(
+  uuid: string,
+  env: WorkerEnv,
+): Promise<Response | null> {
+  if (!env.RATE_LIMITER) return null;
+
+  try {
+    const { success } = await env.RATE_LIMITER.limit({ key: `update:${uuid}` });
+    return success ? null : rateLimitResponse();
+  } catch {
+    logError("rate_limit_failed");
+    return textResponse("Service Unavailable", 503);
+  }
 }
 
 function readString(payload: UpdatePayload, key: string): string | null {
@@ -541,6 +576,8 @@ async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response>
   if (!(await isAuthorizedUpdate(request, env))) {
     return textResponse("Not Found", 404);
   }
+  const rateLimitError = await enforceUploadRateLimit(uuid, env);
+  if (rateLimitError) return rateLimitError;
 
   const requestedCryptoType = readString(payload, "crypto_type")?.trim();
   const cryptoType = requestedCryptoType || "legacy";
