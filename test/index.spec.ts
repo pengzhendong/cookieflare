@@ -1,5 +1,4 @@
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import worker, { type WorkerEnv } from "../src/index";
 
@@ -248,91 +247,78 @@ describe("CookieCloud Worker", () => {
     expect(response.headers.get("access-control-allow-methods")).toContain("POST");
   });
 
-  it("protects the read-only admin page with Cloudflare Access", async () => {
+  it("fails closed when the admin password is missing", async () => {
+    const response = await invoke(
+      new Request("https://example.test/admin"),
+      makeEnv(),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).toContain("not configured");
+  });
+
+  it("protects the read-only admin page with Basic Auth", async () => {
     const env = makeEnv();
-    const teamDomain = "https://cookieflare-access.example.test";
-    const audience = "cookieflare-admin-audience";
-    env.ADMIN_ACCESS_TEAM_DOMAIN = teamDomain;
-    env.ADMIN_ACCESS_AUD = audience;
+    env.ADMIN_PASSWORD = "correct-admin-password";
 
     const unauthorized = await invoke(
       new Request("https://example.test/admin"),
       env,
     );
     expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers.get("www-authenticate")).toContain("Basic");
 
-    const { privateKey, publicKey } = await generateKeyPair("RS256");
-    const publicJwk = await exportJWK(publicKey);
-    publicJwk.kid = "test-key";
-    const originalFetch = globalThis.fetch;
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
-      async (input, init) => {
-        const url = input instanceof Request ? input.url : input.toString();
-        if (url === `${teamDomain}/cdn-cgi/access/certs`) {
-          return new Response(JSON.stringify({ keys: [publicJwk] }), {
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return originalFetch(input, init);
-      },
-    );
-
-    try {
-      const token = await new SignJWT({ email: "admin@example.test" })
-        .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
-        .setIssuer(teamDomain)
-        .setAudience(audience)
-        .setIssuedAt()
-        .setExpirationTime("5m")
-        .sign(privateKey);
-
-      const update = await invoke(
-        new Request("https://example.test/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            uuid: "test-cookiecloud-uuid",
-            encrypted: "admin-visible-metadata-only",
-            crypto_type: "aes-128-cbc-fixed",
-          }),
-        }),
-        env,
-      );
-      expect(update.status).toBe(200);
-
-      const page = await invoke(
-        new Request("https://example.test/admin", {
-          headers: { "Cf-Access-Jwt-Assertion": token },
-        }),
-        env,
-      );
-      expect(page.status).toBe(200);
-      expect(page.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
-      expect(await page.text()).toContain("Private operations dashboard");
-
-      const status = await invoke(
-        new Request("https://example.test/admin/status", {
-          headers: { "Cf-Access-Jwt-Assertion": token },
-        }),
-        env,
-      );
-      expect(status.status).toBe(200);
-      expect(await status.json()).toMatchObject({
-        status: "ok",
-        storage: "cloudflare-kv",
-        authenticated_as: "admin@example.test",
-        payload: {
-          present: true,
-          bytes: new TextEncoder().encode("admin-visible-metadata-only").byteLength,
-          crypto_type: "aes-128-cbc-fixed",
+    const wrongPassword = await invoke(
+      new Request("https://example.test/admin", {
+        headers: {
+          Authorization: `Basic ${Buffer.from("admin:wrong-password", "utf8").toString("base64")}`,
         },
-      });
-    } finally {
-      fetchSpy.mockRestore();
-    }
-  });
+      }),
+      env,
+    );
+    expect(wrongPassword.status).toBe(401);
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+    const authHeader = `Basic ${Buffer.from("admin:correct-admin-password", "utf8").toString("base64")}`;
+    const update = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uuid: "test-cookiecloud-uuid",
+          encrypted: "admin-visible-metadata-only",
+          crypto_type: "aes-128-cbc-fixed",
+        }),
+      }),
+      env,
+    );
+    expect(update.status).toBe(200);
+
+    const page = await invoke(
+      new Request("https://example.test/admin", {
+        headers: { Authorization: authHeader },
+      }),
+      env,
+    );
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(await page.text()).toContain("Private operations dashboard");
+
+    const status = await invoke(
+      new Request("https://example.test/admin/status", {
+        headers: { Authorization: authHeader },
+      }),
+      env,
+    );
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({
+      status: "ok",
+      storage: "cloudflare-kv",
+      authenticated_as: "admin",
+      payload: {
+        present: true,
+        bytes: new TextEncoder().encode("admin-visible-metadata-only").byteLength,
+        crypto_type: "aes-128-cbc-fixed",
+      },
+    });
   });
 });

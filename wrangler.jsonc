@@ -12,10 +12,7 @@
     }
   },
   "vars": {
-    "API_ROOT": "",
-    "ADMIN_ACCESS_TEAM_DOMAIN": "",
-    "ADMIN_ACCESS_AUD": "",
-    "ADMIN_ACCESS_ALLOWED_EMAILS": ""
+    "API_ROOT": ""
   },
   "kv_namespaces": [
     {

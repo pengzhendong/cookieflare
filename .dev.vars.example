@@ -5,10 +5,6 @@ COOKIECLOUD_UUID="replace-with-a-long-random-uuid"
 # X-CookieCloud-Token: <the same value>
 COOKIECLOUD_UPDATE_TOKEN=""
 
-# Required for the /admin page. Use the Cloudflare Access team domain and
-# the Application Audience (AUD) tag of the Access application protecting it.
-ADMIN_ACCESS_TEAM_DOMAIN="https://your-team.cloudflareaccess.com"
-ADMIN_ACCESS_AUD="replace-with-your-access-application-aud"
-
-# Optional defense-in-depth allowlist. Use a comma-separated list of emails.
-ADMIN_ACCESS_ALLOWED_EMAILS=""
+# Password for the /admin page. For production, prefer:
+# npx wrangler secret put ADMIN_PASSWORD --config wrangler.production.jsonc
+ADMIN_PASSWORD="replace-with-a-long-random-password"

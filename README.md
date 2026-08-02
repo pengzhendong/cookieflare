@@ -12,6 +12,7 @@ It stores only CookieCloud's encrypted payload. Cookieflare never decrypts cooki
 - Compatible with CookieCloud upload and download endpoints
 - Supports CookieCloud's gzip upload format
 - Optional upload token for custom clients
+- Password-protected read-only operations page
 - Small, low-frequency storage model backed by Cloudflare KV
 
 ## Deploy
@@ -37,13 +38,16 @@ npx wrangler kv namespace create COOKIE_STORE
 
 Copy the returned namespace ID into `wrangler.jsonc`, replacing the all-zero placeholder. The checked-in configuration intentionally contains no account-specific KV ID or domain.
 
-### 3. Set the CookieCloud UUID
+### 3. Set the secrets
 
 The value must be the same key/UUID configured in your CookieCloud client:
 
 ```bash
 npx wrangler secret put COOKIECLOUD_UUID
+npx wrangler secret put ADMIN_PASSWORD
 ```
+
+The admin username is fixed as `admin`. `ADMIN_PASSWORD` protects only `/admin` and is separate from both the CookieCloud UUID and the CookieCloud client password. If you keep account-specific settings in `wrangler.production.jsonc`, append `--config wrangler.production.jsonc` to these commands.
 
 `COOKIECLOUD_UPDATE_TOKEN` is optional and is intended for custom clients that can send `X-CookieCloud-Token` or a Bearer token. Leave it unset when using a standard CookieCloud client that cannot add custom upload headers.
 
@@ -98,30 +102,24 @@ KV is eventually consistent, so a newly uploaded value can take some time to bec
 | `GET /get/:uuid` | Retrieve the encrypted payload |
 | `POST /get/:uuid` | CookieCloud-compatible download method |
 | `GET /health` | Health check |
-| `GET /admin` | Read-only operations page protected by Cloudflare Access |
+| `GET /admin` | Read-only operations page protected by Basic Auth |
 | `GET /admin/status` | Read-only sync metadata for the operations page |
 
 The download endpoints always return encrypted data, even when a password is supplied. Decryption stays on the client.
 
-## Read-only admin page
+## Password-protected admin page
 
 Cookieflare includes a small read-only page at `/admin`. It shows whether a payload exists, its size, crypto type, and last upload time. It never returns or decrypts the encrypted cookie payload.
 
-The page validates the Cloudflare Access JWT itself. Set up a Self-hosted Access application for only `<your-domain>/admin*`, then allow your own identity. Do not protect the entire hostname, because the CookieCloud API endpoints must remain reachable by clients. See Cloudflare's [application paths documentation](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/).
+Open `https://<your-domain>/admin` in a browser. The browser will show a username and password prompt; use the fixed username `admin` and the `ADMIN_PASSWORD` secret. Only the `/admin` page and `/admin/status` endpoint require this password, so the CookieCloud API remains compatible with standard clients.
 
-Copy the Access team domain and Application Audience (AUD) tag into your private production configuration or Worker environment variables:
+To set or replace the production password, run:
 
-```jsonc
-"vars": {
-  "ADMIN_ACCESS_TEAM_DOMAIN": "https://your-team.cloudflareaccess.com",
-  "ADMIN_ACCESS_AUD": "your-application-aud-tag",
-  "ADMIN_ACCESS_ALLOWED_EMAILS": "you@example.com"
-}
+```bash
+npx wrangler secret put ADMIN_PASSWORD --config wrangler.production.jsonc
 ```
 
-`ADMIN_ACCESS_ALLOWED_EMAILS` is optional and accepts a comma-separated allowlist. Deploy with the private configuration, then open `https://<your-domain>/admin` after signing in through Cloudflare Access. If the Access variables are missing, the page intentionally returns `503`.
-
-Cloudflare's [JWT validation guide](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) explains where to find the team domain and AUD tag.
+Wrangler prompts for the new value without displaying the existing password. Run the same command again if the password is forgotten. If `ADMIN_PASSWORD` is not configured, the admin routes intentionally return `503` rather than being exposed without protection. `COOKIECLOUD_UUID` is still required separately for CookieCloud synchronization and for the dashboard's storage check.
 
 ## Operations
 

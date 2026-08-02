@@ -1,17 +1,13 @@
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
-
 const MAX_COMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_DECOMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_ENCRYPTED_CHARS = 8 * 1024 * 1024;
 const COOKIE_STORE_PREFIX = "cookiecloud:v1:";
 const ADMIN_PATH = "/admin";
+const ADMIN_USERNAME = "admin";
 
 export type WorkerEnv = Omit<
   Env,
-  | "API_ROOT"
-  | "ADMIN_ACCESS_TEAM_DOMAIN"
-  | "ADMIN_ACCESS_AUD"
-  | "ADMIN_ACCESS_ALLOWED_EMAILS"
+  "API_ROOT" | "ADMIN_PASSWORD"
 > & {
   /** Optional path prefix for deployments behind a subpath. */
   API_ROOT?: string;
@@ -19,12 +15,8 @@ export type WorkerEnv = Omit<
   COOKIECLOUD_UUID?: string;
   /** Optional secret for protecting uploads from accidental overwrites. */
   COOKIECLOUD_UPDATE_TOKEN?: string;
-  /** Cloudflare Access team domain used to validate the admin JWT. */
-  ADMIN_ACCESS_TEAM_DOMAIN?: string;
-  /** Cloudflare Access application audience (AUD) tag. */
-  ADMIN_ACCESS_AUD?: string;
-  /** Optional comma-separated defense-in-depth email allowlist. */
-  ADMIN_ACCESS_ALLOWED_EMAILS?: string;
+  /** Secret used by the Basic Auth-protected admin page. */
+  ADMIN_PASSWORD?: string;
 };
 
 type UpdatePayload = Record<string, unknown>;
@@ -37,12 +29,8 @@ interface StoredRecord {
 
 type LogFields = Record<string, boolean | number | string>;
 
-interface AdminIdentity {
-  email: string | null;
-}
-
 type AdminAuthResult =
-  | { identity: AdminIdentity }
+  | { authenticated: true }
   | { response: Response };
 
 class HttpError extends Error {
@@ -57,11 +45,6 @@ class HttpError extends Error {
 function logError(event: string, fields: LogFields = {}): void {
   console.error(JSON.stringify({ event, ...fields }));
 }
-
-const accessJwkSets = new Map<
-  string,
-  ReturnType<typeof createRemoteJWKSet>
->();
 
 const adminSecurityHeaders: HeadersInit = {
   "Cache-Control": "no-store",
@@ -130,7 +113,7 @@ const ADMIN_HTML = String.raw`<!doctype html>
         <article class="card"><span class="label">Last upload · 最近上传</span><strong class="value" id="last-upload">—</strong></article>
       </section>
       <div class="note" id="message">Loading status… · 正在加载状态…</div>
-      <footer>Authenticated as · 当前身份：<span id="identity">—</span><br>Cookieflare stores only the encrypted CookieCloud payload in Cloudflare KV.</footer>
+      <footer>Authenticated as · 当前身份：<span id="identity">admin</span><br>Cookieflare stores only the encrypted CookieCloud payload in Cloudflare KV.</footer>
     </main>
     <script>
       const refreshButton = document.getElementById('refresh');
@@ -167,7 +150,7 @@ const ADMIN_HTML = String.raw`<!doctype html>
           setText('crypto-type', data.payload && data.payload.crypto_type || '—');
           setText('payload-size', data.payload && data.payload.present ? formatBytes(data.payload.bytes) : '—');
           setText('last-upload', data.payload && data.payload.present ? formatDate(data.payload.last_updated_at) : 'Not available · 暂无');
-          setText('identity', data.authenticated_as || 'Cloudflare Access user');
+          setText('identity', data.authenticated_as || 'admin');
           setText('message', data.payload && data.payload.present ? 'The latest encrypted payload is available. · 最新加密数据已存在。' : 'No encrypted payload has been uploaded yet. · 还没有上传加密数据。');
         } catch (error) {
           setText('service-status', 'Unavailable · 不可用');
@@ -267,97 +250,60 @@ function configuredUuid(env: WorkerEnv): string | null {
   return uuid ? uuid : null;
 }
 
-function configuredAccessTeamDomain(env: WorkerEnv): string | null {
-  const value = env.ADMIN_ACCESS_TEAM_DOMAIN?.trim();
-  if (!value) return null;
+interface BasicCredentials {
+  username: string;
+  password: string;
+}
+
+function parseBasicCredentials(request: Request): BasicCredentials | null {
+  const authorization = request.headers.get("Authorization")?.trim() ?? "";
+  if (!authorization.toLowerCase().startsWith("basic ")) return null;
 
   try {
-    const url = new URL(value);
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      url.pathname !== "/" ||
-      url.search ||
-      url.hash
-    ) {
-      return null;
-    }
-    return url.origin;
+    const decoded = atob(authorization.slice("basic ".length).trim());
+    const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+    const credentials = new TextDecoder("utf-8", {
+      fatal: true,
+      ignoreBOM: false,
+    }).decode(bytes);
+    const separator = credentials.indexOf(":");
+    if (separator < 0) return null;
+    return {
+      username: credentials.slice(0, separator),
+      password: credentials.slice(separator + 1),
+    };
   } catch {
     return null;
   }
 }
 
-function configuredAccessAudience(env: WorkerEnv): string | null {
-  const audience = env.ADMIN_ACCESS_AUD?.trim();
-  return audience || null;
-}
-
-function configuredAdminEmails(env: WorkerEnv): string[] {
-  return (env.ADMIN_ACCESS_ALLOWED_EMAILS?.split(",") ?? [])
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function accessJwkSet(teamDomain: string): ReturnType<typeof createRemoteJWKSet> {
-  const cached = accessJwkSets.get(teamDomain);
-  if (cached) return cached;
-
-  const jwkSet = createRemoteJWKSet(
-    new URL(`${teamDomain}/cdn-cgi/access/certs`),
-  );
-  accessJwkSets.set(teamDomain, jwkSet);
-  return jwkSet;
-}
-
-function identityEmail(payload: JWTPayload): string | null {
-  return typeof payload.email === "string" && payload.email.trim()
-    ? payload.email.trim()
-    : null;
+function adminAuthChallenge(): Response {
+  return adminTextResponse("Unauthorized", 401, {
+    "WWW-Authenticate": 'Basic realm="Cookieflare Admin", charset="UTF-8"',
+  });
 }
 
 async function authorizeAdmin(
   request: Request,
   env: WorkerEnv,
 ): Promise<AdminAuthResult> {
-  const teamDomain = configuredAccessTeamDomain(env);
-  const audience = configuredAccessAudience(env);
-  if (!teamDomain || !audience) {
-    logError("admin_access_misconfigured");
+  const expectedPassword = env.ADMIN_PASSWORD;
+  if (!expectedPassword) {
+    logError("admin_password_missing");
     return {
-      response: adminTextResponse("Admin access is not configured", 503),
+      response: adminTextResponse("Admin password is not configured", 503),
     };
   }
 
-  const token = request.headers.get("Cf-Access-Jwt-Assertion")?.trim();
-  if (!token) {
-    return {
-      response: adminTextResponse("Unauthorized", 401, {
-        "WWW-Authenticate": "Bearer",
-      }),
-    };
+  const suppliedCredentials = parseBasicCredentials(request);
+  if (
+    !suppliedCredentials ||
+    suppliedCredentials.username !== ADMIN_USERNAME ||
+    !(await constantTimeEqual(suppliedCredentials.password, expectedPassword))
+  ) {
+    return { response: adminAuthChallenge() };
   }
-
-  try {
-    const { payload } = await jwtVerify(token, accessJwkSet(teamDomain), {
-      issuer: teamDomain,
-      audience,
-      algorithms: ["RS256"],
-    });
-    const email = identityEmail(payload);
-    const allowedEmails = configuredAdminEmails(env);
-    if (
-      allowedEmails.length > 0 &&
-      (!email || !allowedEmails.includes(email.toLowerCase()))
-    ) {
-      return { response: adminTextResponse("Forbidden", 403) };
-    }
-    return { identity: { email } };
-  } catch {
-    logError("admin_access_denied", { reason: "invalid_access_jwt" });
-    return { response: adminTextResponse("Forbidden", 403) };
-  }
+  return { authenticated: true };
 }
 
 async function constantTimeEqual(left: string, right: string): Promise<boolean> {
@@ -677,7 +623,7 @@ async function handleAdminStatus(
         crypto_type: null,
         last_updated_at: null,
       },
-      authenticated_as: authorization.identity.email,
+      authenticated_as: ADMIN_USERNAME,
     });
   }
 
@@ -700,7 +646,7 @@ async function handleAdminStatus(
       crypto_type: record.crypto_type,
       last_updated_at: record.updated_at ?? null,
     },
-    authenticated_as: authorization.identity.email,
+    authenticated_as: ADMIN_USERNAME,
   });
 }
 

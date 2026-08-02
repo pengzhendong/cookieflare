@@ -12,6 +12,7 @@ Cookieflare 是一个运行在 [Cloudflare Workers](https://workers.cloudflare.c
 - 兼容 CookieCloud 的上传和下载接口
 - 支持 CookieCloud 使用的 gzip 上传格式
 - 可为自定义客户端启用上传 Token
+- 使用密码保护只读运维页面
 - 使用 Cloudflare KV 保存轻量级、低频同步数据
 
 ## 部署
@@ -37,13 +38,16 @@ npx wrangler kv namespace create COOKIE_STORE
 
 将命令返回的 namespace ID 填入 `wrangler.jsonc`，替换其中的全零占位 ID。仓库中的配置不包含账号专属的 KV ID 或域名。
 
-### 3. 设置 CookieCloud UUID
+### 3. 设置密钥
 
 该值必须与 CookieCloud 客户端中配置的 Key/UUID 完全一致：
 
 ```bash
 npx wrangler secret put COOKIECLOUD_UUID
+npx wrangler secret put ADMIN_PASSWORD
 ```
+
+后台用户名固定为 `admin`。`ADMIN_PASSWORD` 只保护 `/admin`，与 CookieCloud UUID 以及 CookieCloud 客户端密码相互独立。如果使用 `wrangler.production.jsonc` 保存账号专属配置，请在上述命令后追加 `--config wrangler.production.jsonc`。
 
 `COOKIECLOUD_UPDATE_TOKEN` 是可选项，仅适用于能够发送 `X-CookieCloud-Token` 或 Bearer Token 的自定义客户端。标准 CookieCloud 客户端通常无法添加自定义上传请求头，使用标准客户端时不要设置它。
 
@@ -98,30 +102,24 @@ KV 是最终一致性存储，新上传的数据在其他地区可见前可能�
 | `GET /get/:uuid` | 获取加密数据 |
 | `POST /get/:uuid` | 兼容 CookieCloud 的下载方式 |
 | `GET /health` | 健康检查 |
-| `GET /admin` | 由 Cloudflare Access 保护的只读运维页面 |
+| `GET /admin` | 由 Basic Auth 保护的只读运维页面 |
 | `GET /admin/status` | 提供给运维页面的只读同步元数据 |
 
 下载接口始终返回加密数据，即使请求带有密码，也不会在 Worker 端解密，解密过程留在客户端。
 
-## 只读运维页面
+## 密码保护的运维页面
 
 Cookieflare 提供了一个 `/admin` 只读页面，用来查看是否存在同步数据、数据大小、加密类型和最近上传时间。它不会返回或解密加密后的 Cookie 数据。
 
-页面会自行校验 Cloudflare Access JWT。请在 Cloudflare Zero Trust 中创建 Self-hosted 应用，只保护 `<你的域名>/admin*`，并只允许自己的身份访问。不要保护整个域名，否则 CookieCloud 客户端将无法访问 API 接口。具体可参考 Cloudflare 的[应用路径文档](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)。
+在浏览器中访问 `https://<你的域名>/admin`，浏览器会弹出用户名和密码输入框。用户名固定为 `admin`，密码使用 `ADMIN_PASSWORD` secret。只有 `/admin` 和 `/admin/status` 需要密码，CookieCloud API 仍然可以被标准客户端直接访问。
 
-将 Access team domain 和应用的 Audience（AUD）标签写入本地私有生产配置或 Worker 环境变量：
+设置或重置生产环境密码：
 
-```jsonc
-"vars": {
-  "ADMIN_ACCESS_TEAM_DOMAIN": "https://your-team.cloudflareaccess.com",
-  "ADMIN_ACCESS_AUD": "your-application-aud-tag",
-  "ADMIN_ACCESS_ALLOWED_EMAILS": "you@example.com"
-}
+```bash
+npx wrangler secret put ADMIN_PASSWORD --config wrangler.production.jsonc
 ```
 
-`ADMIN_ACCESS_ALLOWED_EMAILS` 是可选的，支持用逗号分隔多个邮箱。使用私有配置部署后，先通过 Cloudflare Access 登录，再访问 `https://<你的域名>/admin`。如果没有配置 Access 变量，页面会故意返回 `503`，避免后台意外暴露。
-
-Access team domain 和 AUD 标签的获取位置见 Cloudflare 的 [JWT 校验文档](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)。
+Wrangler 会提示输入新密码，不会显示已有密码。忘记密码时重新执行同一条命令即可。未设置 `ADMIN_PASSWORD` 时，后台接口会故意返回 `503`，避免后台在没有保护的情况下暴露。`COOKIECLOUD_UUID` 仍然需要单独设置，它既用于 CookieCloud 同步，也用于后台读取存储状态。
 
 ## 运维与查看
 
