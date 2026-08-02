@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cookieflare",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-02",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "API_ROOT": ""
+  },
+  "kv_namespaces": [
+    {
+      "binding": "COOKIE_STORE",
+      "id": "00000000000000000000000000000000"
+    }
+  ]
+}
