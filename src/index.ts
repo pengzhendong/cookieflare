@@ -1,6 +1,7 @@
 const MAX_COMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_DECOMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_ENCRYPTED_CHARS = 8 * 1024 * 1024;
+const MAX_UUID_CHARS = 128;
 const COOKIE_STORE_PREFIX = "cookiecloud:v1:";
 const ADMIN_PATH = "/admin";
 const ADMIN_USERNAME = "admin";
@@ -11,9 +12,7 @@ export type WorkerEnv = Omit<
 > & {
   /** Optional path prefix for deployments behind a subpath. */
   API_ROOT?: string;
-  /** Secret: the UUID configured in the CookieCloud client. */
-  COOKIECLOUD_UUID?: string;
-  /** Optional secret for protecting uploads from accidental overwrites. */
+  /** Optional secret for protecting all uploads from accidental overwrites. */
   COOKIECLOUD_UPDATE_TOKEN?: string;
   /** Secret used by the Basic Auth-protected admin page. */
   ADMIN_PASSWORD?: string;
@@ -99,7 +98,7 @@ const ADMIN_HTML = String.raw`<!doctype html>
     <main>
       <div class="eyebrow">Private operations dashboard · 私有运维面板</div>
       <h1>Cookieflare</h1>
-      <p class="intro">A read-only view of the CookieCloud sync service. Encrypted cookie contents are never displayed here.<br>这里只显示 CookieCloud 同步服务的只读状态，不会展示 Cookie 内容。</p>
+      <p class="intro">A read-only view of the multi-user CookieCloud sync service. Encrypted cookie contents are never displayed here.<br>这里只显示多用户 CookieCloud 同步服务的只读状态，不会展示 Cookie 内容。</p>
       <div class="toolbar">
         <h2>Service status · 服务状态</h2>
         <button id="refresh" type="button">Refresh · 刷新</button>
@@ -107,10 +106,10 @@ const ADMIN_HTML = String.raw`<!doctype html>
       <section class="grid" aria-live="polite">
         <article class="card"><span class="label">Service · 服务</span><strong class="value" id="service-status">Loading…</strong></article>
         <article class="card"><span class="label">Storage · 存储</span><strong class="value" id="storage-status">Loading…</strong></article>
-        <article class="card"><span class="label">Payload · 数据</span><strong class="value" id="payload-status">Loading…</strong></article>
-        <article class="card"><span class="label">Cipher · 加密类型</span><strong class="value" id="crypto-type">—</strong></article>
-        <article class="card"><span class="label">Payload size · 数据大小</span><strong class="value" id="payload-size">—</strong></article>
-        <article class="card"><span class="label">Last upload · 最近上传</span><strong class="value" id="last-upload">—</strong></article>
+        <article class="card"><span class="label">API mode · API 模式</span><strong class="value" id="api-mode">Loading…</strong></article>
+        <article class="card"><span class="label">Stored UUIDs · 数据空间</span><strong class="value" id="uuid-count">Loading…</strong></article>
+        <article class="card"><span class="label">Payload status · 数据状态</span><strong class="value" id="payload-status">Loading…</strong></article>
+        <article class="card"><span class="label">List status · 列表状态</span><strong class="value" id="list-status">Loading…</strong></article>
       </section>
       <div class="note" id="message">Loading status… · 正在加载状态…</div>
       <footer>Authenticated as · 当前身份：<span id="identity">admin</span><br>Cookieflare stores only the encrypted CookieCloud payload in Cloudflare KV.</footer>
@@ -124,17 +123,8 @@ const ADMIN_HTML = String.raw`<!doctype html>
         document.getElementById(id).textContent = value;
       }
 
-      function formatBytes(bytes) {
-        if (typeof bytes !== 'number') return '—';
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-      }
-
-      function formatDate(value) {
-        if (!value) return 'Not available · 暂无';
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+      function formatCount(value) {
+        return typeof value === 'number' ? String(value) : '—';
       }
 
       async function loadStatus() {
@@ -146,12 +136,14 @@ const ADMIN_HTML = String.raw`<!doctype html>
           if (!response.ok) throw new Error(data.message || 'Request failed');
           setText('service-status', data.status === 'ok' ? 'Operational · 正常' : 'Degraded · 异常');
           setText('storage-status', data.storage || '—');
-          setText('payload-status', data.payload && data.payload.present ? 'Available · 已同步' : 'Empty · 尚未上传');
-          setText('crypto-type', data.payload && data.payload.crypto_type || '—');
-          setText('payload-size', data.payload && data.payload.present ? formatBytes(data.payload.bytes) : '—');
-          setText('last-upload', data.payload && data.payload.present ? formatDate(data.payload.last_updated_at) : 'Not available · 暂无');
+          setText('api-mode', data.api_mode || '—');
+          const storedUuids = data.stored_uuids || {};
+          const count = storedUuids.count;
+          setText('uuid-count', formatCount(count));
+          setText('payload-status', typeof count === 'number' && count > 0 ? 'Available · 已同步' : 'Empty · 尚未上传');
+          setText('list-status', storedUuids.list_complete ? 'Complete · 完整' : 'Partial · 部分');
           setText('identity', data.authenticated_as || 'admin');
-          setText('message', data.payload && data.payload.present ? 'The latest encrypted payload is available. · 最新加密数据已存在。' : 'No encrypted payload has been uploaded yet. · 还没有上传加密数据。');
+          setText('message', typeof count === 'number' && count > 0 ? 'Encrypted payloads are stored in separate UUID namespaces. · 加密数据已按 UUID 分开保存。' : 'No encrypted payload has been uploaded yet. · 还没有上传加密数据。');
         } catch (error) {
           setText('service-status', 'Unavailable · 不可用');
           setText('message', error instanceof Error ? error.message : 'Unable to load status');
@@ -245,9 +237,14 @@ function keyForUuid(uuid: string): string {
   return `${COOKIE_STORE_PREFIX}${encodeURIComponent(uuid)}`;
 }
 
-function configuredUuid(env: WorkerEnv): string | null {
-  const uuid = env.COOKIECLOUD_UUID?.trim();
-  return uuid ? uuid : null;
+function normalizeUuid(value: string | null): string | null {
+  const uuid = value?.trim() ?? "";
+  if (!uuid || uuid.length > MAX_UUID_CHARS) return null;
+  if (/[/\\\u0000-\u001f\u007f]/u.test(uuid)) return null;
+
+  const key = keyForUuid(uuid);
+  if (new TextEncoder().encode(key).byteLength > 512) return null;
+  return uuid;
 }
 
 interface BasicCredentials {
@@ -342,18 +339,10 @@ function extractBearerToken(request: Request): string | null {
   return token || null;
 }
 
-async function isAuthorizedUuid(uuid: string, env: WorkerEnv): Promise<boolean> {
-  const expectedUuid = configuredUuid(env);
-  return expectedUuid !== null && (await constantTimeEqual(uuid, expectedUuid));
-}
-
 async function isAuthorizedUpdate(
   request: Request,
-  uuid: string,
   env: WorkerEnv,
 ): Promise<boolean> {
-  if (!(await isAuthorizedUuid(uuid, env))) return false;
-
   const expectedToken = env.COOKIECLOUD_UPDATE_TOKEN?.trim();
   if (!expectedToken) return true;
 
@@ -386,6 +375,33 @@ function parseStoredRecord(value: string): StoredRecord | null {
   } catch {
     return null;
   }
+}
+
+interface StoredUuidSummary {
+  count: number;
+  list_complete: boolean;
+}
+
+async function listStoredUuids(env: WorkerEnv): Promise<StoredUuidSummary> {
+  let count = 0;
+  let cursor: string | undefined;
+
+  for (let page = 0; page < 100; page += 1) {
+    const result = await env.COOKIE_STORE.list({
+      prefix: COOKIE_STORE_PREFIX,
+      limit: 1000,
+      ...(cursor ? { cursor } : {}),
+    });
+    count += result.keys.length;
+
+    if (result.list_complete) {
+      return { count, list_complete: true };
+    }
+    if (!result.cursor || result.cursor === cursor) break;
+    cursor = result.cursor;
+  }
+
+  return { count, list_complete: false };
 }
 
 async function readStreamWithinLimit(
@@ -501,19 +517,13 @@ function uuidFromGetPath(pathname: string, apiRoot: string): string | null {
   if (!encodedUuid || encodedUuid.includes("/")) return null;
 
   try {
-    const uuid = decodeURIComponent(encodedUuid);
-    return uuid && !uuid.includes("/") && !uuid.includes("\\") ? uuid : null;
+    return normalizeUuid(decodeURIComponent(encodedUuid));
   } catch {
     return null;
   }
 }
 
 async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response> {
-  if (!configuredUuid(env)) {
-    logError("missing_configuration", { key: "COOKIECLOUD_UUID" });
-    return textResponse("Internal Serverless Error", 500);
-  }
-
   let payload: UpdatePayload;
   try {
     payload = await parseUpdatePayload(request);
@@ -522,13 +532,13 @@ async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response>
     return textResponse("Bad Request", 400);
   }
 
-  const uuid = readString(payload, "uuid")?.trim() ?? "";
+  const uuid = normalizeUuid(readString(payload, "uuid"));
   const encrypted = readString(payload, "encrypted") ?? "";
   if (!uuid || !encrypted) return textResponse("Bad Request", 400);
   if (encrypted.length > MAX_ENCRYPTED_CHARS) {
     return textResponse("Payload Too Large", 413);
   }
-  if (!(await isAuthorizedUpdate(request, uuid, env))) {
+  if (!(await isAuthorizedUpdate(request, env))) {
     return textResponse("Not Found", 404);
   }
 
@@ -552,10 +562,6 @@ async function handleUpdate(request: Request, env: WorkerEnv): Promise<Response>
 }
 
 async function handleGet(uuid: string, env: WorkerEnv): Promise<Response> {
-  if (!configuredUuid(env) || !(await isAuthorizedUuid(uuid, env))) {
-    return textResponse("Not Found", 404);
-  }
-
   let value: string | null;
   try {
     value = await env.COOKIE_STORE.get(keyForUuid(uuid), "text");
@@ -592,46 +598,13 @@ async function handleAdminStatus(
   const authorization = await authorizeAdmin(request, env);
   if ("response" in authorization) return authorization.response;
 
-  const uuid = configuredUuid(env);
-  if (!uuid) {
-    logError("missing_configuration", { key: "COOKIECLOUD_UUID" });
-    return adminJsonResponse(
-      { status: "degraded", message: "CookieCloud UUID is not configured" },
-      500,
-    );
-  }
-
-  let value: string | null;
+  let storedUuids: StoredUuidSummary;
   try {
-    value = await env.COOKIE_STORE.get(keyForUuid(uuid), "text");
+    storedUuids = await listStoredUuids(env);
   } catch {
-    logError("admin_kv_get_failed");
+    logError("admin_kv_list_failed");
     return adminJsonResponse(
       { status: "degraded", message: "Unable to read storage" },
-      500,
-    );
-  }
-
-  if (value === null) {
-    return adminJsonResponse({
-      status: "ok",
-      storage: "cloudflare-kv",
-      uuid_configured: true,
-      payload: {
-        present: false,
-        bytes: null,
-        crypto_type: null,
-        last_updated_at: null,
-      },
-      authenticated_as: ADMIN_USERNAME,
-    });
-  }
-
-  const record = parseStoredRecord(value);
-  if (!record) {
-    logError("invalid_stored_record");
-    return adminJsonResponse(
-      { status: "degraded", message: "Stored record is invalid" },
       500,
     );
   }
@@ -639,13 +612,8 @@ async function handleAdminStatus(
   return adminJsonResponse({
     status: "ok",
     storage: "cloudflare-kv",
-    uuid_configured: true,
-    payload: {
-      present: true,
-      bytes: new TextEncoder().encode(record.encrypted).byteLength,
-      crypto_type: record.crypto_type,
-      last_updated_at: record.updated_at ?? null,
-    },
+    api_mode: "multi-user",
+    stored_uuids: storedUuids,
     authenticated_as: ADMIN_USERNAME,
   });
 }

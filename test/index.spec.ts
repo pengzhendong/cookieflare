@@ -12,13 +12,27 @@ class MemoryKV {
   async put(key: string, value: string): Promise<void> {
     this.values.set(key, value);
   }
+
+  async list(options: { prefix?: string } = {}): Promise<{
+    keys: Array<{ name: string }>;
+    list_complete: boolean;
+    cursor: string;
+  }> {
+    const prefix = options.prefix ?? "";
+    return {
+      keys: [...this.values.keys()]
+        .filter((key) => key.startsWith(prefix))
+        .map((name) => ({ name })),
+      list_complete: true,
+      cursor: "",
+    };
+  }
 }
 
 function makeEnv(updateToken?: string, apiRoot = ""): WorkerEnv {
   return {
     API_ROOT: apiRoot,
     COOKIE_STORE: new MemoryKV() as unknown as KVNamespace,
-    COOKIECLOUD_UUID: "test-cookiecloud-uuid",
     COOKIECLOUD_UPDATE_TOKEN: updateToken,
   };
 }
@@ -91,6 +105,29 @@ describe("CookieCloud Worker", () => {
       encrypted,
       crypto_type: "aes-128-cbc-fixed",
     });
+
+    const otherUpdate = await invoke(
+      new Request("https://example.test/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uuid: "another-client-uuid",
+          encrypted: "another-client-payload",
+        }),
+      }),
+      env,
+    );
+    expect(otherUpdate.status).toBe(200);
+
+    const otherDownload = await invoke(
+      new Request("https://example.test/get/another-client-uuid"),
+      env,
+    );
+    expect(otherDownload.status).toBe(200);
+    expect(await otherDownload.json()).toEqual({
+      encrypted: "another-client-payload",
+      crypto_type: "legacy",
+    });
   });
 
   it("accepts form uploads and supports POST downloads", async () => {
@@ -137,7 +174,7 @@ describe("CookieCloud Worker", () => {
     });
   });
 
-  it("rejects unknown UUIDs and protects updates with the optional token", async () => {
+  it("protects updates with the optional token", async () => {
     const env = makeEnv("upload-token");
     const missingToken = await invoke(
       new Request("https://example.test/update", {
@@ -153,7 +190,7 @@ describe("CookieCloud Worker", () => {
     expect(missingToken.status).toBe(404);
 
     const wrongUuid = await invoke(
-      new Request("https://example.test/get/not-the-configured-uuid"),
+      new Request("https://example.test/get/not-yet-uploaded-uuid"),
       env,
     );
     expect(wrongUuid.status).toBe(404);
@@ -217,24 +254,6 @@ describe("CookieCloud Worker", () => {
       makeEnv(),
     );
     expect(malformed.status).toBe(400);
-  });
-
-  it("returns a server error when the UUID secret is missing", async () => {
-    const env = makeEnv();
-    env.COOKIECLOUD_UUID = undefined;
-    const response = await invoke(
-      new Request("https://example.test/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uuid: "test-cookiecloud-uuid",
-          encrypted: "payload",
-        }),
-      }),
-      env,
-    );
-
-    expect(response.status).toBe(500);
   });
 
   it("supports preflight without touching KV", async () => {
@@ -313,11 +332,11 @@ describe("CookieCloud Worker", () => {
     expect(await status.json()).toMatchObject({
       status: "ok",
       storage: "cloudflare-kv",
+      api_mode: "multi-user",
       authenticated_as: "admin",
-      payload: {
-        present: true,
-        bytes: new TextEncoder().encode("admin-visible-metadata-only").byteLength,
-        crypto_type: "aes-128-cbc-fixed",
+      stored_uuids: {
+        count: 1,
+        list_complete: true,
       },
     });
   });

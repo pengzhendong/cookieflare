@@ -1,6 +1,3 @@
-# This must be the same UUID configured in the CookieCloud client.
-COOKIECLOUD_UUID="replace-with-a-long-random-uuid"
-
 # Optional. If set, add this exact header to CookieCloud uploads:
 # X-CookieCloud-Token: <the same value>
 COOKIECLOUD_UPDATE_TOKEN=""

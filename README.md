@@ -11,6 +11,7 @@ It stores only CookieCloud's encrypted payload. Cookieflare never decrypts cooki
 - No NAS, VPS, or always-on computer required
 - Compatible with CookieCloud upload and download endpoints
 - Supports CookieCloud's gzip upload format
+- Isolates multiple clients by their own CookieCloud UUIDs
 - Optional upload token for custom clients
 - Password-protected read-only operations page
 - Small, low-frequency storage model backed by Cloudflare KV
@@ -38,16 +39,15 @@ npx wrangler kv namespace create COOKIE_STORE
 
 Copy the returned namespace ID into `wrangler.jsonc`, replacing the all-zero placeholder. The checked-in configuration intentionally contains no account-specific KV ID or domain.
 
-### 3. Set the secrets
+### 3. Set the admin password
 
-The value must be the same key/UUID configured in your CookieCloud client:
+Cookieflare does not require a server-side UUID. Each CookieCloud client sends its own randomly generated UUID, and the Worker stores each UUID in a separate namespace.
 
 ```bash
-npx wrangler secret put COOKIECLOUD_UUID
 npx wrangler secret put ADMIN_PASSWORD
 ```
 
-The admin username is fixed as `admin`. `ADMIN_PASSWORD` protects only `/admin` and is separate from both the CookieCloud UUID and the CookieCloud client password. If you keep account-specific settings in `wrangler.production.jsonc`, append `--config wrangler.production.jsonc` to these commands.
+The admin username is fixed as `admin`. `ADMIN_PASSWORD` protects only `/admin` and is separate from the CookieCloud UUID and client password. If you keep account-specific settings in `wrangler.production.jsonc`, append `--config wrangler.production.jsonc` to the command.
 
 `COOKIECLOUD_UPDATE_TOKEN` is optional and is intended for custom clients that can send `X-CookieCloud-Token` or a Bearer token. Leave it unset when using a standard CookieCloud client that cannot add custom upload headers.
 
@@ -83,7 +83,7 @@ Use the deployed hostname as the server endpoint:
 | Setting | Value |
 | --- | --- |
 | Endpoint | `https://<your-worker-subdomain>.workers.dev` or your custom domain |
-| UUID | The same value as `COOKIECLOUD_UUID` |
+| UUID | The client's own random UUID; different clients may use different values |
 | Password | Your normal CookieCloud client password |
 
 Use the base endpoint; the client will call `/update` and `/get/:uuid` itself. The password remains client-side. After changing the endpoint, trigger one upload before attempting a download.
@@ -92,7 +92,7 @@ Use the base endpoint; the client will call `/update` and `/get/:uuid` itself. T
 
 Cookieflare stores the encrypted CookieCloud payload and its `crypto_type` in KV. It does not decrypt, inspect, or log cookie contents or passwords.
 
-KV is eventually consistent, so a newly uploaded value can take some time to become visible in another location. This project is intended for low-frequency, personal synchronization; the last successful upload wins.
+KV is eventually consistent, so a newly uploaded value can take some time to become visible in another location. Each UUID is an independent storage namespace; repeated uploads for the same UUID replace its previous value.
 
 ## API
 
@@ -103,13 +103,13 @@ KV is eventually consistent, so a newly uploaded value can take some time to bec
 | `POST /get/:uuid` | CookieCloud-compatible download method |
 | `GET /health` | Health check |
 | `GET /admin` | Read-only operations page protected by Basic Auth |
-| `GET /admin/status` | Read-only sync metadata for the operations page |
+| `GET /admin/status` | Read-only aggregate sync metadata for the operations page |
 
 The download endpoints always return encrypted data, even when a password is supplied. Decryption stays on the client.
 
 ## Password-protected admin page
 
-Cookieflare includes a small read-only page at `/admin`. It shows whether a payload exists, its size, crypto type, and last upload time. It never returns or decrypts the encrypted cookie payload.
+Cookieflare includes a small read-only page at `/admin`. It shows the number of stored UUID namespaces and whether any encrypted payload exists. It never returns or decrypts Cookie data.
 
 Open `https://<your-domain>/admin` in a browser. The browser will show a username and password prompt; use the fixed username `admin` and the `ADMIN_PASSWORD` secret. Only the `/admin` page and `/admin/status` endpoint require this password, so the CookieCloud API remains compatible with standard clients.
 
@@ -119,7 +119,7 @@ To set or replace the production password, run:
 npx wrangler secret put ADMIN_PASSWORD --config wrangler.production.jsonc
 ```
 
-Wrangler prompts for the new value without displaying the existing password. Run the same command again if the password is forgotten. If `ADMIN_PASSWORD` is not configured, the admin routes intentionally return `503` rather than being exposed without protection. `COOKIECLOUD_UUID` is still required separately for CookieCloud synchronization and for the dashboard's storage check.
+Wrangler prompts for the new value without displaying the existing password. Run the same command again if the password is forgotten. If `ADMIN_PASSWORD` is not configured, the admin routes intentionally return `503` rather than being exposed without protection.
 
 ## Operations
 
