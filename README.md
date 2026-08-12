@@ -1,154 +1,191 @@
+<div align="center">
+
 # Cookieflare
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+**A tiny CookieCloud-compatible sync server on your own Cloudflare account.**
 
-Cookieflare is a small, serverless [CookieCloud](https://github.com/easychen/CookieCloud)-compatible server for [Cloudflare Workers](https://workers.cloudflare.com/) and KV.
+Open source · Self-hosted · Encrypted payloads only
 
-It stores only CookieCloud's encrypted payload. Cookieflare never decrypts cookie data and never needs your CookieCloud password. It is an independent implementation, not an official CookieCloud project.
+[简体中文](README.zh-CN.md) · [Getting started](#getting-started) · [Security model](#security-model) · [API](#api)
 
-## Features
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
+![CookieCloud compatible](https://img.shields.io/badge/CookieCloud-Compatible-5B8DEF)
+![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)
+![GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
-- No NAS, VPS, or always-on computer required
-- Compatible with CookieCloud upload and download endpoints
-- Supports CookieCloud's gzip upload format
-- Isolates multiple clients by their own CookieCloud UUIDs
-- Rate-limits uploads per UUID with Cloudflare's native Rate Limiting API
-- Optional upload token for custom clients
-- Password-protected read-only operations page
-- Small, low-frequency storage model backed by Cloudflare KV
+</div>
 
-## Deploy
+Cookieflare is an independent, serverless implementation of the [CookieCloud](https://github.com/easychen/CookieCloud) upload and download API. It runs on Cloudflare Workers and stores each client's encrypted payload in Cloudflare KV—without a NAS, VPS, or always-on computer.
+
+> [!IMPORTANT]
+> Cookieflare never receives the CookieCloud encryption password and cannot decrypt cookie contents. The admin password protects only the operations page; it does not protect `/get/:uuid`. Use a strong, unique CookieCloud password and an unguessable UUID.
+
+## Why Cookieflare
+
+| | What you get |
+| --- | --- |
+| **No server maintenance** | Workers handles requests and KV stores the latest encrypted payload. |
+| **Existing client support** | Compatible upload and download routes, including gzip uploads. |
+| **Payload-blind storage** | Only `encrypted`, `crypto_type`, and an internal update time are stored. |
+| **Independent datasets** | Each CookieCloud UUID maps to a separate logical dataset. |
+| **Basic abuse protection** | Uploads are rate-limited by UUID and client IP. |
+| **Small operations page** | `/admin` shows aggregate service status without exposing cookie data. |
+
+## How it works
+
+1. CookieCloud encrypts cookies locally with the password configured in the client.
+2. The client uploads the encrypted payload and its UUID to Cookieflare.
+3. Cookieflare validates and stores the opaque payload under that UUID.
+4. Another client downloads the payload and decrypts it locally with the same password.
+
+Uploads for the same UUID replace the previous value. Different UUIDs remain separate.
+
+## Getting started
 
 ### Requirements
 
 - Node.js 22 or later
 - A Cloudflare account with Workers and KV access
-- A domain managed by Cloudflare only if you want a custom hostname
+- A Cloudflare-managed domain only when using a custom hostname
 
-### 1. Install and authenticate
+### 1. Install and sign in
 
 ```bash
+git clone https://github.com/pengzhendong/cookieflare.git
+cd cookieflare
 npm ci
 npx wrangler login
 ```
 
-### 2. Create a KV namespace
+### 2. Create the KV namespace
 
 ```bash
 npx wrangler kv namespace create COOKIE_STORE
 ```
 
-Copy the returned namespace ID into `wrangler.jsonc`, replacing the all-zero placeholder. The checked-in configuration intentionally contains no account-specific KV ID or domain.
+Replace the all-zero `id` under `kv_namespaces` in `wrangler.jsonc` with the returned namespace ID.
 
-### 3. Set the admin password
+The checked-in configuration also defines two upload rate limiters: 10 requests per minute for each UUID and 30 per minute for each client IP. Their `namespace_id` values must be unique within your Cloudflare account; change them if those IDs are already in use.
 
-Cookieflare does not require a server-side UUID. Each CookieCloud client sends its own randomly generated UUID, and the Worker stores each UUID in a separate namespace.
+### 3. Protect the operations page
 
 ```bash
 npx wrangler secret put ADMIN_PASSWORD
 ```
 
-The admin username is fixed as `admin`. `ADMIN_PASSWORD` protects only `/admin` and is separate from the CookieCloud UUID and client password. If you keep account-specific settings in `wrangler.production.jsonc`, append `--config wrangler.production.jsonc` to the command.
+The username is always `admin`. This secret is required only for `/admin`; the CookieCloud API continues to work without it.
 
-`COOKIECLOUD_UPDATE_TOKEN` is optional and is intended for custom clients that can send `X-CookieCloud-Token` or a Bearer token. Leave it unset when using a standard CookieCloud client that cannot add custom upload headers.
-
-The default configuration limits `POST /update` to 10 requests per minute for each UUID and 30 requests per minute for each client IP. The UUID limit protects one namespace; the IP limit is a secondary guard against a client creating many random UUIDs. Downloads are not affected. Both `namespace_id` values must be unique within your Cloudflare account; change them in both Wrangler configurations if your account already uses `2026080201` or `2026080202`. See Cloudflare's [Workers Rate Limiting documentation](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
-
-### 4. Deploy
+### 4. Verify and deploy
 
 ```bash
 npm run verify
 npm run deploy
 ```
 
-For a custom domain and account-specific bindings, keep those values in the ignored `wrangler.production.jsonc` and deploy it explicitly:
+Wrangler prints a `workers.dev` address after deployment. Open `/health` to confirm the Worker is responding.
 
-```bash
-npx wrangler deploy --config wrangler.production.jsonc
-```
+### 5. Connect CookieCloud
 
-Without a route, Wrangler provides a `workers.dev` URL in its deployment output. To use your own hostname, add a custom domain route such as:
-
-```jsonc
-"routes": [
-  { "pattern": "api.example.com", "custom_domain": true }
-]
-```
-
-Then deploy again. See Cloudflare's [Custom Domains documentation](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/) for the requirements.
-
-Keep any personal production configuration, domain names, and account-specific IDs outside Git. For example, this repository ignores `wrangler.production.jsonc`.
-
-## CookieCloud client settings
-
-Use the deployed hostname as the server endpoint:
-
-| Setting | Value |
+| Client setting | Value |
 | --- | --- |
-| Endpoint | `https://<your-worker-subdomain>.workers.dev` or your custom domain |
-| UUID | The client's own random UUID; different clients may use different values |
-| Password | Your normal CookieCloud client password |
+| Server | Your Worker base URL, without `/update` or `/get` |
+| UUID | An unguessable client-generated UUID |
+| Password | A strong, unique CookieCloud encryption password |
 
-Use the base endpoint; the client will call `/update` and `/get/:uuid` itself. The password remains client-side. After changing the endpoint, trigger one upload before attempting a download.
+Use the same UUID and password on devices that should share one cookie set. Trigger one upload before downloading on another device.
 
-## Storage and privacy
+## Optional configuration
 
-Cookieflare stores the encrypted CookieCloud payload and its `crypto_type` in KV. It does not decrypt, inspect, or log cookie contents or passwords.
+### Keep production values out of Git
 
-KV is eventually consistent, so a newly uploaded value can take some time to become visible in another location. Each UUID is an independent storage namespace; repeated uploads for the same UUID replace its previous value.
-
-## API
-
-| Endpoint | Purpose |
-| --- | --- |
-| `POST /update` | Store an encrypted CookieCloud payload |
-| `GET /get/:uuid` | Retrieve the encrypted payload |
-| `POST /get/:uuid` | CookieCloud-compatible download method |
-| `GET /health` | Health check |
-| `GET /admin` | Read-only operations page protected by Basic Auth |
-| `GET /admin/status` | Read-only aggregate sync metadata for the operations page |
-
-The download endpoints always return encrypted data, even when a password is supplied. Decryption stays on the client.
-
-## Password-protected admin page
-
-Cookieflare includes a small read-only page at `/admin`. It shows the number of stored UUID namespaces and whether any encrypted payload exists. It never returns or decrypts Cookie data.
-
-Open `https://<your-domain>/admin` in a browser. The browser will show a username and password prompt; use the fixed username `admin` and the `ADMIN_PASSWORD` secret. Only the `/admin` page and `/admin/status` endpoint require this password, so the CookieCloud API remains compatible with standard clients.
-
-To set or replace the production password, run:
+For a private deployment configuration, copy `wrangler.jsonc` to the ignored `wrangler.production.jsonc`, add the real KV ID and optional custom domain, then run:
 
 ```bash
 npx wrangler secret put ADMIN_PASSWORD --config wrangler.production.jsonc
+npx wrangler deploy --config wrangler.production.jsonc
 ```
 
-Wrangler prompts for the new value without displaying the existing password. Run the same command again if the password is forgotten. If `ADMIN_PASSWORD` is not configured, the admin routes intentionally return `503` rather than being exposed without protection.
+Example custom domain route:
 
-## Operations
+```jsonc
+"routes": [
+  { "pattern": "cookies.example.com", "custom_domain": true }
+]
+```
 
-Use the Cloudflare dashboard to inspect Worker metrics, errors, and Observability logs, or stream live events with:
+See Cloudflare's [Custom Domains documentation](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).
+
+### Require an upload token
+
+Custom clients may send either of these headers:
+
+```text
+X-CookieCloud-Token: <token>
+Authorization: Bearer <token>
+```
+
+Enable validation with:
 
 ```bash
-npx wrangler tail
+npx wrangler secret put COOKIECLOUD_UPDATE_TOKEN
 ```
 
-KV values are encrypted blobs and should not be exposed through a public admin page.
+> [!WARNING]
+> Standard CookieCloud clients generally cannot add this header. Leave the secret unset for standard clients, or every upload will be rejected. The token protects uploads only; downloads remain CookieCloud-compatible.
 
-## Local development
+### Serve from a path prefix
+
+Set `API_ROOT` to a value such as `/sync` to expose `/sync/update`, `/sync/get/:uuid`, `/sync/admin`, and the other routes under that prefix.
+
+## Security model
+
+- Encryption and decryption happen in CookieCloud clients, not in the Worker.
+- KV stores the opaque encrypted payload, its crypto type, and an internal update timestamp.
+- Worker error logs contain event names only, not cookie payloads or passwords.
+- Anyone who knows the endpoint and UUID can download the ciphertext. A strong client password is the primary confidentiality boundary.
+- `ADMIN_PASSWORD` protects only the read-only operations page and its status endpoint.
+- `COOKIECLOUD_UPDATE_TOKEN`, when enabled, prevents unauthenticated overwrites but does not protect downloads.
+- Cloudflare KV is eventually consistent, so a new upload may take a short time to appear in another location.
+
+## API
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `POST` | `/update` | Store an encrypted CookieCloud payload |
+| `GET` / `POST` | `/get/:uuid` | Return the encrypted payload for a UUID |
+| `GET` | `/health` | Check whether the Worker is responding |
+| `GET` | `/admin` | Open the Basic Auth-protected operations page |
+| `GET` | `/admin/status` | Return aggregate status used by the operations page |
+
+Uploads accept JSON, URL-encoded forms, multipart forms, and gzip-compressed request bodies. The current payload limit is 8 MiB.
+
+## Operations and development
+
+Run locally with secrets from `.dev.vars`:
 
 ```bash
 cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-Run the full validation suite with:
+Run type generation, TypeScript checks, a deployment dry-run, and tests:
 
 ```bash
 npm run verify
 ```
 
-This generates Worker types, runs TypeScript checks, performs a deployment dry-run, and runs the test suite without deploying a Worker.
+Stream production logs with:
+
+```bash
+npx wrangler tail
+```
+
+If the admin password is forgotten, run `wrangler secret put ADMIN_PASSWORD` again to replace it. The operations page never lists UUID values or encrypted payloads.
+
+## Credits
+
+Cookieflare follows the client protocol established by [easychen/CookieCloud](https://github.com/easychen/CookieCloud). It is an independent implementation and is not affiliated with the original project.
 
 ## License
 
-Cookieflare is released under the [GNU General Public License v3.0](LICENSE).
+Released under the [GNU General Public License v3.0](LICENSE).

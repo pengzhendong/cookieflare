@@ -1,33 +1,58 @@
+<div align="center">
+
 # Cookieflare
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+**在自己的 Cloudflare 账号中运行一个轻量的 CookieCloud 兼容同步服务。**
 
-Cookieflare 是一个运行在 [Cloudflare Workers](https://workers.cloudflare.com/) 和 KV 上的轻量级、无服务器 [CookieCloud](https://github.com/easychen/CookieCloud) 兼容服务端。
+开源 · 自托管 · 只保存加密数据
 
-它只保存 CookieCloud 上传的加密数据，不解密 Cookie，也不需要 CookieCloud 密码。Cookieflare 是独立实现，并非 CookieCloud 官方项目。
+[English](README.md) · [快速部署](#快速部署) · [安全边界](#安全边界) · [接口](#接口)
 
-## 特性
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
+![CookieCloud compatible](https://img.shields.io/badge/CookieCloud-Compatible-5B8DEF)
+![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)
+![GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
-- 不需要 NAS、VPS 或长期运行的电脑
-- 兼容 CookieCloud 的上传和下载接口
-- 支持 CookieCloud 使用的 gzip 上传格式
-- 按客户端自己的 CookieCloud UUID 隔离多个用户
-- 使用 Cloudflare 原生 Rate Limiting API 按 UUID 限制上传频率
-- 可为自定义客户端启用上传 Token
-- 使用密码保护只读运维页面
-- 使用 Cloudflare KV 保存轻量级、低频同步数据
+</div>
 
-## 部署
+Cookieflare 是 [CookieCloud](https://github.com/easychen/CookieCloud) 上传与下载接口的独立、无服务器实现。它运行在 Cloudflare Workers 上，并将每个客户端的加密数据保存到 Cloudflare KV，不需要 NAS、VPS 或常开电脑。
+
+> [!IMPORTANT]
+> Cookieflare 不会收到 CookieCloud 的加密密码，也无法解密 Cookie。后台密码只保护运维页面，并不保护 `/get/:uuid`。请使用高强度且不与其他服务共用的 CookieCloud 密码，并保管好 UUID。
+
+## 为什么选择 Cookieflare
+
+| | 能力 |
+| --- | --- |
+| **无需维护服务器** | Workers 处理请求，KV 保存最新的加密数据。 |
+| **兼容现有客户端** | 提供 CookieCloud 上传和下载接口，并支持 gzip 上传。 |
+| **不接触明文** | 只保存 `encrypted`、`crypto_type` 和内部更新时间。 |
+| **数据相互隔离** | 每个 CookieCloud UUID 对应一份独立的逻辑数据。 |
+| **基础滥用防护** | 按 UUID 和客户端 IP 限制上传频率。 |
+| **轻量运维页面** | `/admin` 只显示服务汇总状态，不展示 Cookie 数据。 |
+
+## 工作方式
+
+1. CookieCloud 在客户端使用配置的密码加密 Cookie。
+2. 客户端将密文和 UUID 上传到 Cookieflare。
+3. Cookieflare 校验请求，并按 UUID 保存这份不可读的密文。
+4. 其他客户端下载密文，再使用相同密码在本地解密。
+
+相同 UUID 的后一次上传会覆盖前一次数据，不同 UUID 之间互不影响。
+
+## 快速部署
 
 ### 环境要求
 
 - Node.js 22 或更高版本
 - 具备 Workers 和 KV 权限的 Cloudflare 账号
-- 只有使用自定义域名时才需要将域名托管在 Cloudflare
+- 仅在使用自定义域名时需要将域名托管到 Cloudflare
 
-### 1. 安装依赖并登录
+### 1. 安装并登录
 
 ```bash
+git clone https://github.com/pengzhendong/cookieflare.git
+cd cookieflare
 npm ci
 npx wrangler login
 ```
@@ -38,117 +63,129 @@ npx wrangler login
 npx wrangler kv namespace create COOKIE_STORE
 ```
 
-将命令返回的 namespace ID 填入 `wrangler.jsonc`，替换其中的全零占位 ID。仓库中的配置不包含账号专属的 KV ID 或域名。
+将返回的 namespace ID 填入 `wrangler.jsonc` 的 `kv_namespaces`，替换其中的全零占位 ID。
 
-### 3. 设置后台密码
+仓库配置还包含两组上传限流：每个 UUID 每分钟 10 次、每个客户端 IP 每分钟 30 次。它们的 `namespace_id` 必须在你的 Cloudflare 账号中唯一；如果已有同号配置，请自行更换。
 
-Cookieflare 不需要服务端统一配置 UUID。每个 CookieCloud 客户端会携带自己随机生成的 UUID，Worker 会为不同 UUID 分别保存数据。
+### 3. 保护运维页面
 
 ```bash
 npx wrangler secret put ADMIN_PASSWORD
 ```
 
-后台用户名固定为 `admin`。`ADMIN_PASSWORD` 只保护 `/admin`，与 CookieCloud UUID 和客户端密码相互独立。如果使用 `wrangler.production.jsonc` 保存账号专属配置，请在命令后追加 `--config wrangler.production.jsonc`。
+用户名固定为 `admin`。该 secret 只用于 `/admin`；即使不设置，CookieCloud API 仍可工作。
 
-`COOKIECLOUD_UPDATE_TOKEN` 是可选项，仅适用于能够发送 `X-CookieCloud-Token` 或 Bearer Token 的自定义客户端。标准 CookieCloud 客户端通常无法添加自定义上传请求头，使用标准客户端时不要设置它。
-
-默认配置会将 `POST /update` 限制为每个 UUID 每分钟 10 次、每个客户端 IP 每分钟 30 次。UUID 限制保护单个数据空间，IP 限制则作为第二层防护，避免客户端快速创建大量随机 UUID。下载接口不受影响。两组 `namespace_id` 都必须在你的 Cloudflare 账号内唯一；如果账号中已经使用 `2026080201` 或 `2026080202`，请同时修改两份 Wrangler 配置。具体说明参见 Cloudflare 的 [Workers Rate Limiting 文档](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)。
-
-### 4. 部署
+### 4. 校验并部署
 
 ```bash
 npm run verify
 npm run deploy
 ```
 
-如果使用自定义域名和账号专属绑定，请将这些值保存在已被忽略的 `wrangler.production.jsonc` 中，并显式使用它部署：
+部署完成后，Wrangler 会输出一个 `workers.dev` 地址。访问 `/health` 即可确认 Worker 是否正常响应。
 
-```bash
-npx wrangler deploy --config wrangler.production.jsonc
-```
+### 5. 连接 CookieCloud
 
-不配置路由时，Wrangler 会在部署输出中提供 `workers.dev` 地址。如果要使用自己的域名，可以添加类似下面的 Custom Domain 配置：
-
-```jsonc
-"routes": [
-  { "pattern": "api.example.com", "custom_domain": true }
-]
-```
-
-然后重新部署。具体要求参见 Cloudflare 的 [Custom Domains 文档](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)。
-
-个人生产配置、域名和账号专属 ID 不要提交到 Git。本仓库已经忽略 `wrangler.production.jsonc`，可以用它保存本机生产配置。
-
-## CookieCloud 客户端配置
-
-将部署后的域名填写为服务端地址：
-
-| 配置项 | 内容 |
+| 客户端配置 | 填写内容 |
 | --- | --- |
-| 服务端地址 | `https://<你的-worker-subdomain>.workers.dev` 或你的自定义域名 |
-| UUID | 客户端自己的随机 UUID，不同客户端可以使用不同值 |
-| 密码 | 继续使用 CookieCloud 客户端自己的密码 |
+| 服务器地址 | Worker 的基础地址，不要附加 `/update` 或 `/get` |
+| UUID | 客户端生成且不易猜测的 UUID |
+| 密码 | 高强度且不与其他服务共用的 CookieCloud 加密密码 |
 
-填写基础地址即可，客户端会自行调用 `/update` 和 `/get/:uuid`。密码始终留在客户端。更换服务端地址后，先手动上传一次，再尝试下载。
+需要共享同一份 Cookie 的设备，应填写相同的 UUID 和密码。新服务端配置完成后，先上传一次，再在其他设备下载。
 
-## 存储与隐私
+## 可选配置
 
-Cookieflare 只把加密后的 CookieCloud 数据和 `crypto_type` 保存到 KV，不解密、不读取，也不记录 Cookie 内容或密码。
+### 避免把生产配置提交到 Git
 
-KV 是最终一致性存储，新上传的数据在其他地区可见前可能有短暂延迟。每个 UUID 都是独立的数据空间；同一个 UUID 重复上传时，以最后一次成功上传为准。
-
-## API
-
-| 接口 | 作用 |
-| --- | --- |
-| `POST /update` | 保存加密后的 CookieCloud 数据 |
-| `GET /get/:uuid` | 获取加密数据 |
-| `POST /get/:uuid` | 兼容 CookieCloud 的下载方式 |
-| `GET /health` | 健康检查 |
-| `GET /admin` | 由 Basic Auth 保护的只读运维页面 |
-| `GET /admin/status` | 提供给运维页面的只读汇总同步元数据 |
-
-下载接口始终返回加密数据，即使请求带有密码，也不会在 Worker 端解密，解密过程留在客户端。
-
-## 密码保护的运维页面
-
-Cookieflare 提供了一个 `/admin` 只读页面，用来查看已保存的 UUID 数据空间数量以及是否存在加密数据。它不会返回或解密 Cookie 数据。
-
-在浏览器中访问 `https://<你的域名>/admin`，浏览器会弹出用户名和密码输入框。用户名固定为 `admin`，密码使用 `ADMIN_PASSWORD` secret。只有 `/admin` 和 `/admin/status` 需要密码，CookieCloud API 仍然可以被标准客户端直接访问。
-
-设置或重置生产环境密码：
+可以将 `wrangler.jsonc` 复制为已被忽略的 `wrangler.production.jsonc`，在其中填写真实 KV ID 和可选的自定义域名，然后执行：
 
 ```bash
 npx wrangler secret put ADMIN_PASSWORD --config wrangler.production.jsonc
+npx wrangler deploy --config wrangler.production.jsonc
 ```
 
-Wrangler 会提示输入新密码，不会显示已有密码。忘记密码时重新执行同一条命令即可。未设置 `ADMIN_PASSWORD` 时，后台接口会故意返回 `503`，避免后台在没有保护的情况下暴露。
+自定义域名示例：
 
-## 运维与查看
+```jsonc
+"routes": [
+  { "pattern": "cookies.example.com", "custom_domain": true }
+]
+```
 
-可以在 Cloudflare 控制台查看 Worker 的请求、错误和 Observability 日志，也可以用下面的命令实时查看日志：
+具体要求参见 Cloudflare 的 [Custom Domains 文档](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)。
+
+### 启用上传 Token
+
+自定义客户端可以发送以下任意一种请求头：
+
+```text
+X-CookieCloud-Token: <token>
+Authorization: Bearer <token>
+```
+
+使用下面的命令启用校验：
 
 ```bash
-npx wrangler tail
+npx wrangler secret put COOKIECLOUD_UPDATE_TOKEN
 ```
 
-KV 中保存的是加密数据，不建议通过公开后台展示。
+> [!WARNING]
+> 标准 CookieCloud 客户端通常不能添加该请求头。使用标准客户端时请不要设置这个 secret，否则所有上传都会被拒绝。Token 只保护上传，下载接口仍保持 CookieCloud 兼容。
 
-## 本地开发
+### 使用路径前缀
+
+将 `API_ROOT` 设为 `/sync` 一类的路径后，接口会对应变为 `/sync/update`、`/sync/get/:uuid`、`/sync/admin` 等。
+
+## 安全边界
+
+- 加密和解密都在 CookieCloud 客户端完成，Worker 不参与解密。
+- KV 只保存加密数据、加密类型和内部更新时间。
+- Worker 错误日志只记录事件名称，不记录 Cookie 数据或密码。
+- 知道服务地址和 UUID 的人可以下载密文，因此客户端密码才是主要的机密性边界。
+- `ADMIN_PASSWORD` 只保护只读运维页面及其状态接口。
+- 启用 `COOKIECLOUD_UPDATE_TOKEN` 后可以防止未授权覆盖，但它不保护下载。
+- Cloudflare KV 是最终一致性存储，新上传的数据在其他地区可见前可能存在短暂延迟。
+
+## 接口
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `POST` | `/update` | 保存 CookieCloud 加密数据 |
+| `GET` / `POST` | `/get/:uuid` | 返回对应 UUID 的加密数据 |
+| `GET` | `/health` | 检查 Worker 是否正常响应 |
+| `GET` | `/admin` | 打开由 Basic Auth 保护的运维页面 |
+| `GET` | `/admin/status` | 返回运维页面使用的汇总状态 |
+
+上传支持 JSON、URL 编码表单、multipart 表单和 gzip 压缩请求体，当前数据上限为 8 MiB。
+
+## 运维与开发
+
+使用 `.dev.vars` 中的本地 secret 启动开发服务：
 
 ```bash
 cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-运行完整校验：
+生成类型、执行 TypeScript 检查、部署预检和测试：
 
 ```bash
 npm run verify
 ```
 
-该命令会生成 Worker 类型、执行 TypeScript 检查、部署 dry-run 和测试，不会真正部署 Worker。
+实时查看生产日志：
+
+```bash
+npx wrangler tail
+```
+
+忘记后台密码时，重新执行 `wrangler secret put ADMIN_PASSWORD` 即可覆盖旧密码。运维页面不会列出 UUID，也不会展示加密数据。
+
+## 致谢
+
+Cookieflare 兼容 [easychen/CookieCloud](https://github.com/easychen/CookieCloud) 建立的客户端协议。它是独立实现，与原项目没有隶属关系。
 
 ## 许可证
 
-Cookieflare 使用 [GNU General Public License v3.0](LICENSE) 发布。
+本项目使用 [GNU General Public License v3.0](LICENSE) 发布。
