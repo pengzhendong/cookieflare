@@ -63,7 +63,7 @@ npx wrangler login
 npx wrangler kv namespace create COOKIE_STORE
 ```
 
-将返回的 namespace ID 填入 `wrangler.jsonc` 的 `kv_namespaces`，替换其中的全零占位 ID。
+将返回的 namespace ID 填入 `wrangler.jsonc` 的 `kv_namespaces`，替换其中现有的 ID。
 
 仓库配置还包含两组上传限流：每个 UUID 每分钟 10 次、每个客户端 IP 每分钟 30 次。它们的 `namespace_id` 必须在你的 Cloudflare 账号中唯一；如果已有同号配置，请自行更换。
 

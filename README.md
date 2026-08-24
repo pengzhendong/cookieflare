@@ -63,7 +63,7 @@ npx wrangler login
 npx wrangler kv namespace create COOKIE_STORE
 ```
 
-Replace the all-zero `id` under `kv_namespaces` in `wrangler.jsonc` with the returned namespace ID.
+Replace the `id` under `kv_namespaces` in `wrangler.jsonc` with the returned namespace ID.
 
 The checked-in configuration also defines two upload rate limiters: 10 requests per minute for each UUID and 30 per minute for each client IP. Their `namespace_id` values must be unique within your Cloudflare account; change them if those IDs are already in use.
 
