@@ -1,0 +1,3 @@
+[submodule "vendor/worker-kit"]
+	path = vendor/worker-kit
+	url = https://github.com/pengzhendong/worker-kit.git

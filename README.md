@@ -29,7 +29,7 @@ Cookieflare is an independent, serverless implementation of the [CookieCloud](ht
 | **Payload-blind storage** | Only `encrypted`, `crypto_type`, and an internal update time are stored. |
 | **Independent datasets** | Each CookieCloud UUID maps to a separate logical dataset. |
 | **Basic abuse protection** | Uploads are rate-limited by UUID and client IP. |
-| **Small operations page** | `/admin` shows aggregate service status without exposing cookie data. |
+| **Management console** | `/admin` provides paginated dataset metadata, confirmed deletion, runtime checks, service configuration, and API documentation. |
 
 ## How it works
 
@@ -51,7 +51,7 @@ Uploads for the same UUID replace the previous value. Different UUIDs remain sep
 ### 1. Install and sign in
 
 ```bash
-git clone https://github.com/pengzhendong/cookieflare.git
+git clone --recurse-submodules https://github.com/pengzhendong/cookieflare.git
 cd cookieflare
 npm ci
 npx wrangler login
@@ -143,7 +143,7 @@ Set `API_ROOT` to a value such as `/sync` to expose `/sync/update`, `/sync/get/:
 - KV stores the opaque encrypted payload, its crypto type, and an internal update timestamp.
 - Worker error logs contain event names only, not cookie payloads or passwords.
 - Anyone who knows the endpoint and UUID can download the ciphertext. A strong client password is the primary confidentiality boundary.
-- `ADMIN_PASSWORD` protects only the read-only operations page and its status endpoint.
+- `ADMIN_PASSWORD` protects the management APIs with revocable 12-hour KV sessions. Login is rate-limited; writes require a same-origin request. `/admin/status` retains its legacy Basic Auth interface.
 - `COOKIECLOUD_UPDATE_TOKEN`, when enabled, prevents unauthenticated overwrites but does not protect downloads.
 - Cloudflare KV is eventually consistent, so a new upload may take a short time to appear in another location.
 
@@ -154,8 +154,8 @@ Set `API_ROOT` to a value such as `/sync` to expose `/sync/update`, `/sync/get/:
 | `POST` | `/update` | Store an encrypted CookieCloud payload |
 | `GET` / `POST` | `/get/:uuid` | Return the encrypted payload for a UUID |
 | `GET` | `/health` | Check whether the Worker is responding |
-| `GET` | `/admin` | Open the Basic Auth-protected operations page |
-| `GET` | `/admin/status` | Return aggregate status used by the operations page |
+| `GET` | `/admin` | Open the WorkerKit console and session login |
+| `GET` | `/admin/status` | Legacy aggregate status endpoint (Basic Auth) |
 
 Uploads accept JSON, URL-encoded forms, multipart forms, and gzip-compressed request bodies. The current payload limit is 8 MiB.
 
@@ -180,7 +180,7 @@ Stream production logs with:
 npx wrangler tail
 ```
 
-If the admin password is forgotten, run `wrangler secret put ADMIN_PASSWORD` again to replace it. The operations page never lists UUID values or encrypted payloads.
+If the admin password is forgotten, run `wrangler secret put ADMIN_PASSWORD` again to replace it. The authenticated console lists UUIDs and metadata, but never returns encrypted payloads or plaintext cookies. Deletion removes a snapshot; clients can upload again. Upload tokens do not grant administrator access.
 
 ## Credits
 
@@ -189,3 +189,9 @@ Cookieflare follows the client protocol established by [easychen/CookieCloud](ht
 ## License
 
 Released under the [GNU General Public License v3.0](LICENSE).
+
+## WorkerKit integration
+
+The public WorkerKit submodule is pinned at `vendor/worker-kit`. Existing clones should run `git submodule update --init --recursive` before `npm ci`. Install dependencies only at the project root. The console reuses WorkerKit layout, theme, login, request cancellation, error boundaries, native KV sessions, and runtime checks. CookieCloud upload/download paths, encryption formats, payload limits, and upload rate limits remain compatible. No database migration or extra password secret is required. API tokens are not issued by this console.
+
+The data list reads at most 10 records per page, serially, and never polls storage automatically. UUIDs are access identifiers: do not share management screenshots containing real UUIDs.

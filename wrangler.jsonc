@@ -30,6 +30,14 @@
         "limit": 30,
         "period": 60
       }
+    },
+    {
+      "name": "ADMIN_LOGIN_RATE_LIMITER",
+      "namespace_id": "2026102501",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
     }
   ],
   "kv_namespaces": [
@@ -37,5 +45,16 @@
       "binding": "COOKIE_STORE",
       "id": "8835bf7c41bf4f039dfd793b944cf5ab"
     }
-  ]
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "build": {
+    "command": "npm run build:console"
+  },
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  }
 }

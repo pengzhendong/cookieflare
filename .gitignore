@@ -6,3 +6,4 @@ node_modules/
 wrangler.production.jsonc
 worker-configuration.d.ts
 coverage/
+public/admin-assets/

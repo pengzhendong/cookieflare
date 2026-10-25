@@ -1,14 +1,14 @@
+import { adminApi, adminConsolePage } from "./admin";
+import { COOKIE_STORE_PREFIX, keyForUuid, normalizeUuid } from "./keys";
 const MAX_COMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_DECOMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_ENCRYPTED_CHARS = 8 * 1024 * 1024;
-const MAX_UUID_CHARS = 128;
-const COOKIE_STORE_PREFIX = "cookiecloud:v1:";
 const ADMIN_PATH = "/admin";
 const ADMIN_USERNAME = "admin";
 
 export type WorkerEnv = Omit<
   Env,
-  "API_ROOT" | "ADMIN_PASSWORD" | "RATE_LIMITER" | "IP_RATE_LIMITER"
+  "API_ROOT" | "ADMIN_PASSWORD" | "RATE_LIMITER" | "IP_RATE_LIMITER" | "ASSETS" | "CF_VERSION_METADATA" | "ADMIN_LOGIN_RATE_LIMITER"
 > & {
   /** Optional path prefix for deployments behind a subpath. */
   API_ROOT?: string;
@@ -20,6 +20,9 @@ export type WorkerEnv = Omit<
   IP_RATE_LIMITER?: RateLimitBinding;
   /** Secret used by the Basic Auth-protected admin page. */
   ADMIN_PASSWORD?: string;
+  ADMIN_LOGIN_RATE_LIMITER?: RateLimitBinding;
+  CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
+  ASSETS?: Fetcher;
 };
 
 interface RateLimitBinding {
@@ -61,110 +64,6 @@ const adminSecurityHeaders: HeadersInit = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
 };
-
-const ADMIN_HTML = String.raw`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Cookieflare · Admin</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f4f5f7;
-        color: #202124;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root { background: #17181b; color: #f2f3f5; }
-        .card { background: #222428; border-color: #35383e; }
-        .muted { color: #aeb4bd; }
-        .value { color: #f2f3f5; }
-        button { background: #f2f3f5; color: #17181b; }
-      }
-      body { margin: 0; min-height: 100vh; }
-      main { box-sizing: border-box; max-width: 920px; margin: 0 auto; padding: 56px 22px 48px; }
-      .eyebrow { color: #68707d; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-      h1 { margin: 10px 0 8px; font-size: clamp(32px, 6vw, 52px); letter-spacing: -.04em; }
-      .intro { max-width: 640px; margin: 0; color: #68707d; line-height: 1.65; }
-      @media (prefers-color-scheme: dark) { .eyebrow, .intro { color: #aeb4bd; } }
-      .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 34px 0 16px; }
-      .toolbar h2 { margin: 0; font-size: 18px; }
-      button { border: 0; border-radius: 999px; padding: 10px 16px; background: #202124; color: #fff; cursor: pointer; font: inherit; font-weight: 700; }
-      button:disabled { cursor: wait; opacity: .65; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
-      .card { min-height: 104px; box-sizing: border-box; padding: 20px; border: 1px solid #dde1e7; border-radius: 18px; background: #fff; }
-      .label { color: #68707d; font-size: 13px; }
-      .value { display: block; margin-top: 10px; color: #202124; font-size: 21px; font-weight: 750; overflow-wrap: anywhere; }
-      .muted { color: #68707d; font-size: 13px; }
-      .note { margin-top: 18px; padding: 16px 18px; border-left: 3px solid #6d5efc; border-radius: 8px; background: rgba(109, 94, 252, .09); line-height: 1.6; }
-      footer { margin-top: 36px; color: #68707d; font-size: 12px; line-height: 1.6; }
-      @media (prefers-color-scheme: dark) { footer { color: #aeb4bd; } }
-    </style>
-  </head>
-  <body>
-    <main>
-      <div class="eyebrow">Private operations dashboard · 私有运维面板</div>
-      <h1>Cookieflare</h1>
-      <p class="intro">A read-only view of the multi-user CookieCloud sync service. Encrypted cookie contents are never displayed here.<br>这里只显示多用户 CookieCloud 同步服务的只读状态，不会展示 Cookie 内容。</p>
-      <div class="toolbar">
-        <h2>Service status · 服务状态</h2>
-        <button id="refresh" type="button">Refresh · 刷新</button>
-      </div>
-      <section class="grid" aria-live="polite">
-        <article class="card"><span class="label">Service · 服务</span><strong class="value" id="service-status">Loading…</strong></article>
-        <article class="card"><span class="label">Storage · 存储</span><strong class="value" id="storage-status">Loading…</strong></article>
-        <article class="card"><span class="label">API mode · API 模式</span><strong class="value" id="api-mode">Loading…</strong></article>
-        <article class="card"><span class="label">Stored UUIDs · 数据空间</span><strong class="value" id="uuid-count">Loading…</strong></article>
-        <article class="card"><span class="label">Payload status · 数据状态</span><strong class="value" id="payload-status">Loading…</strong></article>
-        <article class="card"><span class="label">List status · 列表状态</span><strong class="value" id="list-status">Loading…</strong></article>
-      </section>
-      <div class="note" id="message">Loading status… · 正在加载状态…</div>
-      <footer>Authenticated as · 当前身份：<span id="identity">admin</span><br>Cookieflare stores only the encrypted CookieCloud payload in Cloudflare KV.</footer>
-    </main>
-    <script>
-      const refreshButton = document.getElementById('refresh');
-      const statusUrl = new URL(window.location.href);
-      statusUrl.pathname = statusUrl.pathname.replace(/\/$/, '') + '/status';
-
-      function setText(id, value) {
-        document.getElementById(id).textContent = value;
-      }
-
-      function formatCount(value) {
-        return typeof value === 'number' ? String(value) : '—';
-      }
-
-      async function loadStatus() {
-        refreshButton.disabled = true;
-        setText('message', 'Loading status… · 正在加载状态…');
-        try {
-          const response = await fetch(statusUrl, { credentials: 'same-origin', cache: 'no-store' });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.message || 'Request failed');
-          setText('service-status', data.status === 'ok' ? 'Operational · 正常' : 'Degraded · 异常');
-          setText('storage-status', data.storage || '—');
-          setText('api-mode', data.api_mode || '—');
-          const storedUuids = data.stored_uuids || {};
-          const count = storedUuids.count;
-          setText('uuid-count', formatCount(count));
-          setText('payload-status', typeof count === 'number' && count > 0 ? 'Available · 已同步' : 'Empty · 尚未上传');
-          setText('list-status', storedUuids.list_complete ? 'Complete · 完整' : 'Partial · 部分');
-          setText('identity', data.authenticated_as || 'admin');
-          setText('message', typeof count === 'number' && count > 0 ? 'Encrypted payloads are stored in separate UUID namespaces. · 加密数据已按 UUID 分开保存。' : 'No encrypted payload has been uploaded yet. · 还没有上传加密数据。');
-        } catch (error) {
-          setText('service-status', 'Unavailable · 不可用');
-          setText('message', error instanceof Error ? error.message : 'Unable to load status');
-        } finally {
-          refreshButton.disabled = false;
-        }
-      }
-
-      refreshButton.addEventListener('click', loadStatus);
-      loadStatus();
-    </script>
-  </body>
-</html>`;
 
 const baseHeaders = (): HeadersInit => ({
   "Access-Control-Allow-Headers":
@@ -235,16 +134,6 @@ function rateLimitResponse(): Response {
   );
 }
 
-function adminHtmlResponse(): Response {
-  return new Response(ADMIN_HTML, {
-    status: 200,
-    headers: {
-      ...adminSecurityHeaders,
-      "Content-Type": "text/html; charset=utf-8",
-    },
-  });
-}
-
 function normalizeApiRoot(value: string | undefined): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed || trimmed === "/") return "";
@@ -253,20 +142,6 @@ function normalizeApiRoot(value: string | undefined): string {
 
 function apiPath(apiRoot: string, suffix: string): string {
   return `${apiRoot}${suffix}`;
-}
-
-function keyForUuid(uuid: string): string {
-  return `${COOKIE_STORE_PREFIX}${encodeURIComponent(uuid)}`;
-}
-
-function normalizeUuid(value: string | null): string | null {
-  const uuid = value?.trim() ?? "";
-  if (!uuid || uuid.length > MAX_UUID_CHARS) return null;
-  if (/[/\\\u0000-\u001f\u007f]/u.test(uuid)) return null;
-
-  const key = keyForUuid(uuid);
-  if (new TextEncoder().encode(key).byteLength > 512) return null;
-  return uuid;
 }
 
 interface BasicCredentials {
@@ -636,9 +511,8 @@ async function handleAdminPage(
   request: Request,
   env: WorkerEnv,
 ): Promise<Response> {
-  const authorization = await authorizeAdmin(request, env);
-  if ("response" in authorization) return authorization.response;
-  return adminHtmlResponse();
+  if (!env.ADMIN_PASSWORD) return adminTextResponse("Admin password is not configured", 503);
+  return adminConsolePage(normalizeApiRoot(env.API_ROOT));
 }
 
 async function handleAdminStatus(
@@ -672,6 +546,14 @@ const worker: ExportedHandler<WorkerEnv> = {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
     const apiRoot = normalizeApiRoot(env.API_ROOT);
+
+    if (url.pathname.startsWith(`${apiRoot}/admin-assets/`) && ['GET', 'HEAD'].includes(request.method)) {
+      if (!env.ASSETS) return textResponse('Not Found', 404);
+      const assetUrl = new URL(request.url); assetUrl.pathname = url.pathname.slice(apiRoot.length);
+      return env.ASSETS.fetch(new Request(assetUrl, { method: request.method }));
+    }
+    const adminResult = await adminApi(request, env, apiRoot);
+    if (adminResult) return adminResult;
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: baseHeaders() });
 

@@ -5,9 +5,14 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
-    "lib": ["ESNext"],
-    "types": ["@types/node"],
-    "skipLibCheck": true
+    "lib": [
+      "ESNext"
+    ],
+    "types": [
+      "@types/node"
+    ],
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src/**/*.ts",

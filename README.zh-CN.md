@@ -29,7 +29,7 @@ Cookieflare 是 [CookieCloud](https://github.com/easychen/CookieCloud) 上传与
 | **不接触明文** | 只保存 `encrypted`、`crypto_type` 和内部更新时间。 |
 | **数据相互隔离** | 每个 CookieCloud UUID 对应一份独立的逻辑数据。 |
 | **基础滥用防护** | 按 UUID 和客户端 IP 限制上传频率。 |
-| **轻量运维页面** | `/admin` 只显示服务汇总状态，不展示 Cookie 数据。 |
+| **管理后台** | `/admin` 提供数据集元数据分页、删除确认、运行状态、服务配置与 API 文档。 |
 
 ## 工作方式
 
@@ -51,7 +51,7 @@ Cookieflare 是 [CookieCloud](https://github.com/easychen/CookieCloud) 上传与
 ### 1. 安装并登录
 
 ```bash
-git clone https://github.com/pengzhendong/cookieflare.git
+git clone --recurse-submodules https://github.com/pengzhendong/cookieflare.git
 cd cookieflare
 npm ci
 npx wrangler login
@@ -143,7 +143,7 @@ npx wrangler secret put COOKIECLOUD_UPDATE_TOKEN
 - KV 只保存加密数据、加密类型和内部更新时间。
 - Worker 错误日志只记录事件名称，不记录 Cookie 数据或密码。
 - 知道服务地址和 UUID 的人可以下载密文，因此客户端密码才是主要的机密性边界。
-- `ADMIN_PASSWORD` 只保护只读运维页面及其状态接口。
+- `ADMIN_PASSWORD` 保护后台管理 API；会话在 KV 中保存 12 小时，退出会在服务端注销。登录限流、写请求同源校验独立于上传保护。旧 `/admin/status` 保留 Basic Auth。
 - 启用 `COOKIECLOUD_UPDATE_TOKEN` 后可以防止未授权覆盖，但它不保护下载。
 - Cloudflare KV 是最终一致性存储，新上传的数据在其他地区可见前可能存在短暂延迟。
 
@@ -154,8 +154,8 @@ npx wrangler secret put COOKIECLOUD_UPDATE_TOKEN
 | `POST` | `/update` | 保存 CookieCloud 加密数据 |
 | `GET` / `POST` | `/get/:uuid` | 返回对应 UUID 的加密数据 |
 | `GET` | `/health` | 检查 Worker 是否正常响应 |
-| `GET` | `/admin` | 打开由 Basic Auth 保护的运维页面 |
-| `GET` | `/admin/status` | 返回运维页面使用的汇总状态 |
+| `GET` | `/admin` | 打开 WorkerKit 后台及会话登录页 |
+| `GET` | `/admin/status` | 旧汇总状态接口，保留 Basic Auth |
 
 上传支持 JSON、URL 编码表单、multipart 表单和 gzip 压缩请求体，当前数据上限为 8 MiB。
 
@@ -180,7 +180,7 @@ npm run verify
 npx wrangler tail
 ```
 
-忘记后台密码时，重新执行 `wrangler secret put ADMIN_PASSWORD` 即可覆盖旧密码。运维页面不会列出 UUID，也不会展示加密数据。
+忘记后台密码时，重新执行 `wrangler secret put ADMIN_PASSWORD` 即可覆盖旧密码。登录后的后台会列出 UUID、更新时间、密文大小和加密格式，但不会返回密文或 Cookie 明文。删除会移除服务端快照，客户端仍可重新上传；上传令牌不能用于后台登录。
 
 ## 致谢
 
@@ -189,3 +189,9 @@ Cookieflare 兼容 [easychen/CookieCloud](https://github.com/easychen/CookieClou
 ## 许可证
 
 本项目使用 [GNU General Public License v3.0](LICENSE) 发布。
+
+## WorkerKit 接入
+
+通过 `vendor/worker-kit` submodule 固定公共源码版本。已有克隆先执行 `git submodule update --init --recursive`，再在项目根目录 `npm ci`，不要在 submodule 内安装依赖。后台复用布局、主题、登录页、请求取消、错误边界、原生 KV 会话和运行检查。CookieCloud 上传下载路径、加密格式、请求体限制和上传限流保持兼容；无需数据迁移或增加密码 Secret。本版不签发 API Token。
+
+列表每页最多读取 10 个数据集，串行读取以限制大快照的峰值内存，不自动轮询。UUID 是客户端访问标识，分享后台截图时应隐藏真实 UUID。

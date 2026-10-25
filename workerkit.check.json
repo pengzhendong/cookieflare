@@ -1,0 +1,1 @@
+{ "bindings": { "COOKIE_STORE": "kv", "ADMIN_LOGIN_RATE_LIMITER": "ratelimit" }, "secrets": ["ADMIN_PASSWORD"] }

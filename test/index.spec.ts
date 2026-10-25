@@ -5,13 +5,16 @@ import worker, { type WorkerEnv } from "../src/index";
 class MemoryKV {
   private readonly values = new Map<string, string>();
 
-  async get(key: string): Promise<string | null> {
-    return this.values.get(key) ?? null;
+  async get(key: string, type?: string): Promise<any> {
+    const value = this.values.get(key) ?? null;
+    return type === 'json' && value !== null ? JSON.parse(value) : value;
   }
 
   async put(key: string, value: string): Promise<void> {
     this.values.set(key, value);
   }
+
+  async delete(key: string): Promise<void> { this.values.delete(key); }
 
   async list(options: { prefix?: string } = {}): Promise<{
     keys: Array<{ name: string }>;
@@ -352,7 +355,7 @@ describe("CookieCloud Worker", () => {
     expect(await response.text()).toContain("not configured");
   });
 
-  it("protects the read-only admin page with Basic Auth", async () => {
+  it("provides a session login shell and preserves Basic Auth on the legacy status endpoint", async () => {
     const env = makeEnv();
     env.ADMIN_PASSWORD = "correct-admin-password";
 
@@ -360,8 +363,8 @@ describe("CookieCloud Worker", () => {
       new Request("https://example.test/admin"),
       env,
     );
-    expect(unauthorized.status).toBe(401);
-    expect(unauthorized.headers.get("www-authenticate")).toContain("Basic");
+    expect(unauthorized.status).toBe(200);
+    expect(await unauthorized.text()).toContain('/admin-assets/console.js');
 
     const wrongPassword = await invoke(
       new Request("https://example.test/admin", {
@@ -371,7 +374,7 @@ describe("CookieCloud Worker", () => {
       }),
       env,
     );
-    expect(wrongPassword.status).toBe(401);
+    expect(wrongPassword.status).toBe(200);
 
     const authHeader = `Basic ${Buffer.from("admin:correct-admin-password", "utf8").toString("base64")}`;
     const update = await invoke(
@@ -396,7 +399,7 @@ describe("CookieCloud Worker", () => {
     );
     expect(page.status).toBe(200);
     expect(page.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
-    expect(await page.text()).toContain("Private operations dashboard");
+    expect(await page.text()).toContain('/admin-assets/console.js');
 
     const status = await invoke(
       new Request("https://example.test/admin/status", {
