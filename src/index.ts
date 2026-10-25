@@ -547,6 +547,8 @@ const worker: ExportedHandler<WorkerEnv> = {
     const url = new URL(request.url);
     const apiRoot = normalizeApiRoot(env.API_ROOT);
 
+    if (url.pathname === `${apiRoot}/admin/reference` && request.method === 'GET') return adminConsolePage(apiRoot, true);
+
     if (url.pathname.startsWith(`${apiRoot}/admin-assets/`) && ['GET', 'HEAD'].includes(request.method)) {
       if (!env.ASSETS) return textResponse('Not Found', 404);
       const assetUrl = new URL(request.url); assetUrl.pathname = url.pathname.slice(apiRoot.length);

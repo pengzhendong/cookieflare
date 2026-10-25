@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Alert, App, Button, Card, Col, Descriptions, Flex, Modal, Row, Space, Spin, Statistic, Table, Tag, Typography } from 'antd';
 import { CloudServerOutlined, DatabaseOutlined, DeleteOutlined, ReloadOutlined, SettingOutlined, UserOutlined, ApiOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { AdminShell, AppErrorBoundary, LoginPage, PageHeader, WorkerKitProvider, createApiClient, createSessionScope, isRequestCancelled } from '@pengzhendong/worker-kit/web';
+import { ApiCenter } from '@pengzhendong/worker-kit/web/api-center';
 import { RuntimeStatus } from '@pengzhendong/worker-kit/web/runtime-status';
 import '@pengzhendong/worker-kit/web/styles.css';
 import './console.css';
@@ -47,8 +48,7 @@ function Configuration() {
   ]} /></Card>}</>;
 }
 function ApiDocs() {
-  const rows = [ ['GET', '/health', '公开', '服务存活检查'], ['POST', '/update', '可选上传令牌', '上传 encrypted、uuid 与可选 crypto_type'], ['GET / POST', '/get/{uuid}', '客户端 UUID', '下载密文，由客户端自行解密'], ['POST', '/admin/api/auth/login', '同源与登录限流', '管理员登录'], ['POST', '/admin/api/auth/logout', '同源', '删除当前会话'], ['GET', '/admin/api/datasets', '管理员会话', '分页读取数据集元数据'], ['DELETE', '/admin/api/datasets/{uuid}', '管理员会话与同源校验', '删除已确认的数据集'], ['GET', '/admin/api/runtime', '管理员会话', '版本与 KV 连接检查'] ];
-  return <><PageHeader title="API 文档" description="CookieCloud 兼容接口与后台管理接口。" /><Alert type="info" showIcon title="后台会话、上传令牌和 CookieCloud 加密密码用途不同" description="上传令牌不会授予后台权限。解密密码只存在于客户端；后台不提供解密或密码查看。此版本未开放 API Token 签发。" style={{ marginBottom: 16 }} /><Card><Table pagination={false} rowKey={(row) => row[1]} scroll={{ x: 700 }} dataSource={rows} columns={[{ title: '方法', render: (_, row) => <Tag>{row[0]}</Tag> }, { title: '路径', render: (_, row) => <Typography.Text code>{base}{row[1]}</Typography.Text> }, { title: '认证', render: (_, row) => row[2] }, { title: '用途', render: (_, row) => row[3] }]} /></Card></>;
+  return <ApiCenter client={api} scope={scope} specUrl={path('/openapi.json')} referenceUrl={`${base}/admin/reference`} description="CookieCloud 兼容接口与后台管理接口。" documentationNote="文档调试只请求当前应用。后台接口使用当前会话，不提供 API Token 签发。写请求会修改真实数据。" />;
 }
 function Console() {
   const [page, setPage] = useState(readPage), [session, setSession] = useState<{ username: string } | null>(), [error, setError] = useState('');
@@ -60,7 +60,7 @@ function Console() {
   if (!session) return <LoginPage title="Cookieflare" onLogin={async (values, signal) => { const data = await auth<{ username: string }>(path('/auth/login'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values), signal }); scope.reset('signed-in'); setSession(data); }} />;
   return <AdminShell title="Cookieflare" brandIcon={<img width={30} height={30} src={`${base}/admin-assets/favicon.svg`} alt="" />} activeKey={page} onNavigate={(key) => { location.hash = key; }} pageTitleInHeader username={session.username} items={[
     { key: 'datasets', label: '数据集', icon: <DatabaseOutlined /> }, { key: 'runtime', label: '运行状态', icon: <CloudServerOutlined /> }, { key: 'configuration', label: '服务配置', icon: <SettingOutlined /> },
-  ]} userMenuItems={[{ key: 'account', label: '当前账户', icon: <UserOutlined /> }, { key: 'api', label: 'API 文档', icon: <ApiOutlined /> }]} onLogout={async () => { await api(path('/auth/logout'), { method: 'POST' }); scope.reset('signed-out'); setSession(null); }}>
+  ]} userMenuItems={[{ key: 'account', label: '当前账户', icon: <UserOutlined /> }, { key: 'api', label: 'API 中心', icon: <ApiOutlined /> }]} onLogout={async () => { await api(path('/auth/logout'), { method: 'POST' }); scope.reset('signed-out'); setSession(null); }}>
     <AppErrorBoundary key={`${scope.version}:${page}`} scope="page">{page === 'datasets' ? <Datasets /> : page === 'runtime' ? <RuntimeStatus client={api} statusUrl={path('/runtime')} metricsUrl={path('/runtime/metrics')} /> : page === 'configuration' ? <Configuration /> : page === 'api' ? <ApiDocs /> : page === 'account' ? <Card title="当前账户"><Descriptions column={1} items={[{ key: 'username', label: '用户名', children: session.username }, { key: 'role', label: '角色', children: '管理员' }, { key: 'session', label: '会话', children: '12 小时有效，使用 HttpOnly Cookie；注销会删除服务端会话。' }]} /></Card> : <Alert type="warning" title="页面不存在" action={<Button onClick={() => { location.hash = 'datasets'; }}>返回数据集</Button>} />}</AppErrorBoundary>
   </AdminShell>;
 }

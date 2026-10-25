@@ -155,6 +155,8 @@ Set `API_ROOT` to a value such as `/sync` to expose `/sync/update`, `/sync/get/:
 | `GET` / `POST` | `/get/:uuid` | Return the encrypted payload for a UUID |
 | `GET` | `/health` | Check whether the Worker is responding |
 | `GET` | `/admin` | Open the WorkerKit console and session login |
+| `GET` | `/admin/reference` | Standalone Scalar shell; the document still requires an admin session |
+| `GET` | `/admin/api/openapi.json` | Session-protected OpenAPI 3.1 document |
 | `GET` | `/admin/status` | Legacy aggregate status endpoint (Basic Auth) |
 
 Uploads accept JSON, URL-encoded forms, multipart forms, and gzip-compressed request bodies. The current payload limit is 8 MiB.
@@ -195,3 +197,5 @@ Released under the [GNU General Public License v3.0](LICENSE).
 The public WorkerKit submodule is pinned at `vendor/worker-kit`. Existing clones should run `git submodule update --init --recursive` before `npm ci`. Install dependencies only at the project root. The console reuses WorkerKit layout, theme, login, request cancellation, error boundaries, native KV sessions, and runtime checks. CookieCloud upload/download paths, encryption formats, payload limits, and upload rate limits remain compatible. No database migration or extra password secret is required. API tokens are not issued by this console.
 
 The data list reads at most 10 records per page, serially, and never polls storage automatically. UUIDs are access identifiers: do not share management screenshots containing real UUIDs.
+
+The account menu opens the WorkerKit API center with a searchable catalog, method/tag filters, request/response schemas, Scalar same-origin testing, and code examples. Both views share one OpenAPI document and support `API_ROOT`. Scalar is bundled from a pinned local npm package without a CDN or persistent credentials. Write requests change real data. This integration does not issue admin API tokens; existing upload credentials grant no admin access.

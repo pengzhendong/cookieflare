@@ -12,7 +12,7 @@ async function login(fetch: ReturnType<typeof fixture>['fetch']) { const respons
 describe('Cookieflare management API', () => {
   it('protects every management read and deletion, and never treats an upload token as an admin session', async () => {
     const { fetch, env } = fixture(); env.COOKIECLOUD_UPDATE_TOKEN = 'upload-only';
-    for (const path of ['/datasets', '/configuration', '/runtime', '/runtime/metrics']) expect((await fetch('/admin/api' + path, { headers: { Authorization: 'Bearer upload-only' } })).status).toBe(401);
+    for (const path of ['/datasets', '/configuration', '/runtime', '/runtime/metrics', '/openapi.json']) expect((await fetch('/admin/api' + path, { headers: { Authorization: 'Bearer upload-only' } })).status).toBe(401);
     expect((await fetch('/admin/api/datasets/sample', { method: 'DELETE', headers: { Origin: origin }, body: '{}' })).status).toBe(401);
   });
   it('checks origin, throttles login and refuses oversized credentials before parsing', async () => {
@@ -45,4 +45,40 @@ describe('Cookieflare management API', () => {
     await fetch('/admin/api/auth/logout', { method: 'POST', headers: { cookie, Origin: origin } });
     expect((await fetch('/admin/api/auth/session', { headers: { cookie } })).status).toBe(401);
   });
+  it('serves a session-protected, prefixed OpenAPI catalog with real schemas and no Token management routes', async () => {
+    const { fetch, env } = fixture('/sync');
+    env.COOKIECLOUD_UPDATE_TOKEN = 'do-not-leak-upload-secret';
+    const cookie = await login(fetch);
+    const response = await fetch('/admin/api/openapi.json', { headers: { cookie } });
+    expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toBe('no-store');
+    const raw = await response.text(), spec = JSON.parse(raw);
+    expect(raw).not.toContain(env.COOKIECLOUD_UPDATE_TOKEN);
+    expect(spec.openapi).toBe('3.1.0');
+    const operations = Object.entries(spec.paths).flatMap(([path, value]) => Object.keys(value as object).map((method) => `${method.toUpperCase()} ${path}`));
+    expect(operations).toHaveLength(15);
+    expect(operations).toContain('GET /sync/get/{uuid}'); expect(operations).toContain('POST /sync/get/{uuid}');
+    expect(operations.some((operation) => /api-keys|tokens/.test(operation))).toBe(false);
+    const upload = spec.paths['/sync/update'].post;
+    expect(upload.security).toEqual([{ uploadHeader: [] }, { uploadBearer: [] }]);
+    expect(upload.requestBody.content['application/json'].schema.required).toEqual(['uuid', 'encrypted']);
+    expect(spec.paths['/sync/admin/status'].get.security).toEqual([{ basicAdmin: [] }]);
+    expect(spec.paths['/sync/admin/api/datasets'].get.security).toEqual([{ adminSession: [] }]);
+    expect(spec.paths['/sync/admin/api/datasets/{uuid}'].delete.requestBody.content['application/json'].schema.required).toEqual(['confirmUuid']);
+    const health = await (await fetch('/health')).json();
+    expect(Object.keys(health as object).sort()).toEqual(spec.paths['/sync/health'].get.responses[200].content['application/json'].schema.required.sort());
+    delete env.COOKIECLOUD_UPDATE_TOKEN;
+    const publicUploadSpec = await (await fetch('/admin/api/openapi.json', { headers: { cookie } })).json() as any;
+    expect(publicUploadSpec.paths['/sync/update'].post.security).toEqual([]);
+  });
+  it('isolates Scalar assets from the console and allows embedding only from the same origin', async () => {
+    const { fetch } = fixture('/sync');
+    const page = await fetch('/admin'), reference = await fetch('/admin/reference');
+    expect(page.headers.get('content-security-policy')).toContain("frame-src 'self'");
+    expect(page.headers.get('x-frame-options')).toBe('DENY');
+    expect(reference.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+    expect(reference.headers.get('content-security-policy')).toContain("frame-ancestors 'self'");
+    const shell = await reference.text(); expect(shell).toContain('/sync/admin-assets/reference.js'); expect(shell).toContain('data-api-root="/sync"');
+    expect(shell).not.toContain('console.js');
+  });
+
 });

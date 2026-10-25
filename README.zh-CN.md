@@ -155,6 +155,8 @@ npx wrangler secret put COOKIECLOUD_UPDATE_TOKEN
 | `GET` / `POST` | `/get/:uuid` | 返回对应 UUID 的加密数据 |
 | `GET` | `/health` | 检查 Worker 是否正常响应 |
 | `GET` | `/admin` | 打开 WorkerKit 后台及会话登录页 |
+| `GET` | `/admin/reference` | 独立 Scalar 文档壳；接口文档本身仍要求后台会话 |
+| `GET` | `/admin/api/openapi.json` | 受后台会话保护的 OpenAPI 3.1 文档 |
 | `GET` | `/admin/status` | 旧汇总状态接口，保留 Basic Auth |
 
 上传支持 JSON、URL 编码表单、multipart 表单和 gzip 压缩请求体，当前数据上限为 8 MiB。
@@ -195,3 +197,5 @@ Cookieflare 兼容 [easychen/CookieCloud](https://github.com/easychen/CookieClou
 通过 `vendor/worker-kit` submodule 固定公共源码版本。已有克隆先执行 `git submodule update --init --recursive`，再在项目根目录 `npm ci`，不要在 submodule 内安装依赖。后台复用布局、主题、登录页、请求取消、错误边界、原生 KV 会话和运行检查。CookieCloud 上传下载路径、加密格式、请求体限制和上传限流保持兼容；无需数据迁移或增加密码 Secret。本版不签发 API Token。
 
 列表每页最多读取 10 个数据集，串行读取以限制大快照的峰值内存，不自动轮询。UUID 是客户端访问标识，分享后台截图时应隐藏真实 UUID。
+
+后台左下角用户菜单的“API 中心”复用 WorkerKit 接口列表和 Scalar 文档，支持搜索、方法/分组筛选、参数与响应 Schema、同源调试、调用代码示例。列表与文档共用一份 OpenAPI 声明，并支持 `API_ROOT` 前缀。Scalar 通过本地固定版本 npm 包构建，不从 CDN 加载，不保存认证输入。写请求会修改真实数据；文档不新增后台 Token 签发，既有上传令牌不授予后台权限。

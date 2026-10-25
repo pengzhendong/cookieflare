@@ -1,6 +1,7 @@
 import { createKvAdminAuth, inspectRuntime, readCloudflareMetrics } from '@pengzhendong/worker-kit/runtime';
 import { COOKIE_STORE_PREFIX, keyForUuid, normalizeUuid } from './keys';
 import type { WorkerEnv } from './index';
+import { cookieflareOpenApi } from './openapi';
 
 const auth = createKvAdminAuth({ cookieName: 'cookieflare_admin', keyPrefix: 'workerkit:admin:session:', authScope: 'cookieflare:admin-auth', sessionSeconds: 12 * 60 * 60 });
 const json = (data: unknown, status = 200, extra?: HeadersInit) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...extra } });
@@ -14,9 +15,10 @@ async function body(request: Request): Promise<Record<string, unknown>> {
   const value: unknown = JSON.parse(text); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid_json'); return value as Record<string, unknown>;
 }
 
-export function adminConsolePage(root: string) {
-  return new Response(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/svg+xml" href="${root}/admin-assets/favicon.svg"><link rel="stylesheet" href="${root}/admin-assets/console.css"><title>Cookieflare</title></head><body data-api-root="${root.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')}"><div id="root"></div><script type="module" src="${root}/admin-assets/console.js"></script></body></html>`, { headers: {
-    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'", 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
+export function adminConsolePage(root: string, reference = false) {
+  const entry = reference ? 'reference' : 'console';
+  return new Response(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/svg+xml" href="${root}/admin-assets/favicon.svg"><link rel="stylesheet" href="${root}/admin-assets/${entry}.css"><title>Cookieflare${reference ? ' API 文档' : ''}</title></head><body data-api-root="${root.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')}"><div id="root"></div><script type="module" src="${root}/admin-assets/${entry}.js"></script></body></html>`, { headers: {
+    'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors ${reference ? "'self'" : "'none'"}`, 'X-Frame-Options': reference ? 'SAMEORIGIN' : 'DENY', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
   } });
 }
 
@@ -37,6 +39,7 @@ export async function adminApi(request: Request, env: WorkerEnv, root: string): 
     if (path === '/auth/logout' && request.method === 'POST') return json({ ok: true }, 200, { 'Set-Cookie': await auth.deleteSession(request, env.COOKIE_STORE) });
     if (!await auth.isAuthenticated(request, env.COOKIE_STORE, username, env.ADMIN_PASSWORD)) return failure(401, 'unauthorized', '请先登录');
     if (path === '/auth/session' && request.method === 'GET') return json({ username });
+    if (path === '/openapi.json' && request.method === 'GET') return json(cookieflareOpenApi(root, !!env.COOKIECLOUD_UPDATE_TOKEN?.trim()));
     if (path === '/runtime' && request.method === 'GET') return json(await inspectRuntime({ application: { name: 'Cookieflare', version: '0.1.0' }, environment: ['127.0.0.1', 'localhost'].includes(url.hostname) ? 'local' : 'production', version: env.CF_VERSION_METADATA, checks: [{ name: 'KV', kind: 'kv', description: '加密快照与可注销的后台会话', check: () => env.COOKIE_STORE.get('workerkit:health') }] }));
     if (path === '/runtime/metrics' && request.method === 'GET') return json(await readCloudflareMetrics({}));
     if (path === '/configuration' && request.method === 'GET') return json({ apiRoot: root || '/', storage: 'Cloudflare KV', uploadTokenConfigured: !!env.COOKIECLOUD_UPDATE_TOKEN, uuidRateLimitConfigured: !!env.RATE_LIMITER, ipRateLimitConfigured: !!env.IP_RATE_LIMITER, loginRateLimitConfigured: !!env.ADMIN_LOGIN_RATE_LIMITER, sessionHours: 12, encryption: '客户端加密，服务端不保存解密密码' });
