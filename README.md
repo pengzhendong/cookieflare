@@ -73,7 +73,7 @@ The checked-in configuration also defines two upload rate limiters: 10 requests 
 npx wrangler secret put ADMIN_PASSWORD
 ```
 
-The username is always `admin`. This secret is required only for `/admin`; the CookieCloud API continues to work without it.
+The username defaults to `admin`. Set `ADMIN_USERNAME` (for example with `wrangler secret put ADMIN_USERNAME`) to override it. These credentials protect only the management console and APIs; the CookieCloud API continues to work without them. Changing either credential invalidates existing console sessions.
 
 ### 4. Verify and deploy
 

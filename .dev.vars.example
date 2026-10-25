@@ -5,3 +5,6 @@ COOKIECLOUD_UPDATE_TOKEN=""
 # Password for the /admin page. For production, prefer:
 # npx wrangler secret put ADMIN_PASSWORD --config wrangler.production.jsonc
 ADMIN_PASSWORD="replace-with-a-long-random-password"
+
+# Optional administrator username. Defaults to admin when omitted.
+ADMIN_USERNAME="admin"

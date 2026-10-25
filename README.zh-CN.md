@@ -73,7 +73,7 @@ npx wrangler kv namespace create COOKIE_STORE
 npx wrangler secret put ADMIN_PASSWORD
 ```
 
-用户名固定为 `admin`。该 secret 只用于 `/admin`；即使不设置，CookieCloud API 仍可工作。
+用户名默认为 `admin`，可通过 `ADMIN_USERNAME`（例如 `wrangler secret put ADMIN_USERNAME`）覆盖。两项凭据只保护后台页面与管理 API；即使不设置，CookieCloud API 仍可工作。修改用户名或密码会使旧后台会话失效。
 
 ### 4. 校验并部署
 

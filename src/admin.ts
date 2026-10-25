@@ -2,11 +2,11 @@ import { createKvAdminAuth, inspectRuntime, readCloudflareMetrics } from '@pengz
 import { COOKIE_STORE_PREFIX, keyForUuid, normalizeUuid } from './keys';
 import type { WorkerEnv } from './index';
 import { cookieflareOpenApi } from './openapi';
+import { adminUsername } from './credentials';
 
 const auth = createKvAdminAuth({ cookieName: 'cookieflare_admin', keyPrefix: 'workerkit:admin:session:', authScope: 'cookieflare:admin-auth', sessionSeconds: 12 * 60 * 60 });
 const json = (data: unknown, status = 200, extra?: HeadersInit) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...extra } });
 const failure = (status: number, code: string, message: string, extra?: HeadersInit) => json({ error: { code, message } }, status, extra);
-const username = 'admin';
 async function body(request: Request): Promise<Record<string, unknown>> {
   if (!request.body) return {};
   const reader = request.body.getReader(); let text = '', length = 0; const decoder = new TextDecoder();
@@ -26,6 +26,7 @@ export function adminConsolePage(root: string, reference = false) {
 export async function adminApi(request: Request, env: WorkerEnv, root: string): Promise<Response | undefined> {
   const url = new URL(request.url), prefix = `${root}/admin/api`, path = url.pathname.slice(prefix.length);
   if (!url.pathname.startsWith(`${prefix}/`)) return;
+  const username = adminUsername(env);
   if (!env.ADMIN_PASSWORD) return failure(503, 'auth_unconfigured', '管理员认证未配置');
   if (!['GET', 'HEAD'].includes(request.method) && !auth.isSameOrigin(request)) return failure(403, 'invalid_origin', '请求来源无效');
   try {

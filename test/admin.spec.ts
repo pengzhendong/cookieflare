@@ -8,7 +8,7 @@ function fixture(root = '') {
   const fetch = (path: string, init?: RequestInit) => Promise.resolve(worker.fetch!(new Request(origin + root + path, init) as unknown as Parameters<NonNullable<typeof worker.fetch>>[0], env, {} as ExecutionContext));
   return { env, values, fetch };
 }
-async function login(fetch: ReturnType<typeof fixture>['fetch']) { const response = await fetch('/admin/api/auth/login', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'existing-admin-password' }) }); expect(response.status).toBe(200); return response.headers.get('set-cookie')!.split(';')[0]!; }
+async function login(fetch: ReturnType<typeof fixture>['fetch'], username = 'admin') { const response = await fetch('/admin/api/auth/login', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password: 'existing-admin-password' }) }); expect(response.status).toBe(200); return response.headers.get('set-cookie')!.split(';')[0]!; }
 describe('Cookieflare management API', () => {
   it('protects every management read and deletion, and never treats an upload token as an admin session', async () => {
     const { fetch, env } = fixture(); env.COOKIECLOUD_UPDATE_TOKEN = 'upload-only';
@@ -79,6 +79,23 @@ describe('Cookieflare management API', () => {
     expect(reference.headers.get('content-security-policy')).toContain("frame-ancestors 'self'");
     const shell = await reference.text(); expect(shell).toContain('/sync/admin-assets/reference.js'); expect(shell).toContain('data-api-root="/sync"');
     expect(shell).not.toContain('console.js');
+  });
+
+  it('uses the configured username for both session and legacy Basic authentication, invalidating prior identities', async () => {
+    const { fetch, env } = fixture();
+    const oldCookie = await login(fetch);
+    env.ADMIN_USERNAME = 'operator-test';
+    expect((await fetch('/admin/api/auth/session', { headers: { cookie: oldCookie } })).status).toBe(401);
+    const oldLogin = await fetch('/admin/api/auth/login', { method: 'POST', headers: { Origin: origin }, body: JSON.stringify({ username: 'admin', password: 'existing-admin-password' }) });
+    expect(oldLogin.status).toBe(401);
+    const cookie = await login(fetch, 'operator-test');
+    expect(await (await fetch('/admin/api/auth/session', { headers: { cookie } })).json()).toEqual({ username: 'operator-test' });
+    const basic = (user: string) => ({ Authorization: `Basic ${btoa(`${user}:existing-admin-password`)}` });
+    expect((await fetch('/admin/status', { headers: basic('admin') })).status).toBe(401);
+    const legacy = await fetch('/admin/status', { headers: basic('operator-test') });
+    expect(legacy.status).toBe(200); expect((await legacy.json() as any).authenticated_as).toBe('operator-test');
+    env.ADMIN_PASSWORD = 'rotated-test-password';
+    expect((await fetch('/admin/api/auth/session', { headers: { cookie } })).status).toBe(401);
   });
 
 });

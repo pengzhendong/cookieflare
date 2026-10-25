@@ -1,14 +1,14 @@
 import { adminApi, adminConsolePage } from "./admin";
+import { adminUsername } from './credentials';
 import { COOKIE_STORE_PREFIX, keyForUuid, normalizeUuid } from "./keys";
 const MAX_COMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_DECOMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_ENCRYPTED_CHARS = 8 * 1024 * 1024;
 const ADMIN_PATH = "/admin";
-const ADMIN_USERNAME = "admin";
 
 export type WorkerEnv = Omit<
   Env,
-  "API_ROOT" | "ADMIN_PASSWORD" | "RATE_LIMITER" | "IP_RATE_LIMITER" | "ASSETS" | "CF_VERSION_METADATA" | "ADMIN_LOGIN_RATE_LIMITER"
+  "API_ROOT" | "ADMIN_PASSWORD" | "ADMIN_USERNAME" | "RATE_LIMITER" | "IP_RATE_LIMITER" | "ASSETS" | "CF_VERSION_METADATA" | "ADMIN_LOGIN_RATE_LIMITER"
 > & {
   /** Optional path prefix for deployments behind a subpath. */
   API_ROOT?: string;
@@ -18,8 +18,10 @@ export type WorkerEnv = Omit<
   RATE_LIMITER?: RateLimitBinding;
   /** Optional secondary rate limiter for upload bursts from one client IP. */
   IP_RATE_LIMITER?: RateLimitBinding;
-  /** Secret used by the Basic Auth-protected admin page. */
+  /** Secret used by console sessions and the legacy Basic Auth endpoint. */
   ADMIN_PASSWORD?: string;
+  /** Optional administrator username, defaulting to admin for existing deployments. */
+  ADMIN_USERNAME?: string;
   ADMIN_LOGIN_RATE_LIMITER?: RateLimitBinding;
   CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
   ASSETS?: Fetcher;
@@ -192,7 +194,7 @@ async function authorizeAdmin(
   const suppliedCredentials = parseBasicCredentials(request);
   if (
     !suppliedCredentials ||
-    suppliedCredentials.username !== ADMIN_USERNAME ||
+    suppliedCredentials.username !== adminUsername(env) ||
     !(await constantTimeEqual(suppliedCredentials.password, expectedPassword))
   ) {
     return { response: adminAuthChallenge() };
@@ -538,7 +540,7 @@ async function handleAdminStatus(
     storage: "cloudflare-kv",
     api_mode: "multi-user",
     stored_uuids: storedUuids,
-    authenticated_as: ADMIN_USERNAME,
+    authenticated_as: adminUsername(env),
   });
 }
 
