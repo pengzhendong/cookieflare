@@ -158,7 +158,16 @@ try {
   try {
     if (uploaded.length) {
       if ((await api.get(url('/admin/api/auth/session'))).status() === 401) {
-        assert.equal((await api.post(url('/admin/api/auth/login'), { headers, data: { username: 'admin', password: 'password' } })).status(), 200);
+        let login = await api.post(url('/admin/api/auth/login'), { headers, data: { username: 'admin', password: 'password' } });
+        if (login.status() === 429) {
+          // Consecutive frontend suites share the real login limiter. Honor
+          // its retry window before cleaning up; never weaken the binding.
+          const seconds = Number(login.headers()['retry-after']);
+          assert.ok(Number.isFinite(seconds) && seconds > 0 && seconds <= 60);
+          await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+          login = await api.post(url('/admin/api/auth/login'), { headers, data: { username: 'admin', password: 'password' } });
+        }
+        assert.equal(login.status(), 200);
       }
       for (const uuid of uploaded) assert.equal((await api.delete(url(`/admin/api/datasets/${uuid}`), { headers, data: { confirmUuid: uuid } })).status(), 200, 'Synthetic fixture cleanup must succeed');
     }

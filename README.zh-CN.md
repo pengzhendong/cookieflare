@@ -223,3 +223,8 @@ WorkerKit 通过固定提交的 `vendor/worker-kit` submodule 接入，不复制
 运行 `npm run preview` 会构建两套界面并启动同一个本地 Worker。`npm run test:console` 检查 Nuxt UI，`npm run test:console:vben` 检查 Vben，包括跨界面免重复登录。
 
 Vben 业务源码保存在 `frontend-vben/`，公共请求、会话及接口目录逻辑复用 `frontend/` 的独立模块。构建复用 WorkerKit 的固定 Vben 上游提交和 pnpm 工作区锁文件；上游与依赖只生成在 submodule 的忽略目录 `.wrangler/ui-build/`，不改动共享示例源码。构建 Vben 需要 pnpm；首次构建会下载并校验上游源码、安装锁定依赖。单独运行 `npm run build:vben` 可重建 Vben；部署前 `npm run verify` 会构建并检查两套界面。无须增加新的 Worker 或存储绑定。
+# WorkerKit 0.4 升级验证
+
+共享 submodule 固定为 `d19416e`（0.4.0）。两套控制台通过本地浏览器验收及全部 20 项测试；恢复旧版 `a8778d6`、重新安装和检查，再返回新版也通过。CookieCloud 业务代码、绑定、Secret 和业务数据保持不变；本轮未部署 Cookieflare 生产服务。
+
+回滚共享源码时，在 `vendor/worker-kit` 内 checkout 审核过的提交，用 `git add vendor/worker-kit` 暂存 gitlink，供 doctor 检查所选版本，再执行 `npm install`、`npm run verify`，通过后提交。数据库及业务数据回滚另行处理。连续运行两套浏览器检查时，测试清理会遵守真实登录限流的重试窗口。
