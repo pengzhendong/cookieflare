@@ -15,8 +15,8 @@ async function body(request: Request): Promise<Record<string, unknown>> {
   const value: unknown = JSON.parse(text); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid_json'); return value as Record<string, unknown>;
 }
 
-export function adminConsolePage(root: string, reference = false) {
-  const entry = reference ? 'reference' : 'console';
+export function adminConsolePage(root: string, reference = false, frontend: 'nuxt' | 'vben' = 'nuxt') {
+  const entry = reference ? 'reference' : frontend === 'vben' ? 'vben/console' : 'console';
   return new Response(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/svg+xml" href="${root}/admin-assets/favicon.svg"><link rel="stylesheet" href="${root}/admin-assets/${entry}.css"><title>Cookieflare${reference ? ' API 文档' : ''}</title></head><body data-api-root="${root.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')}"><div id="root"></div><script type="module" src="${root}/admin-assets/${entry}.js"></script></body></html>`, { headers: {
     'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors ${reference ? "'self'" : "'none'"}`, 'X-Frame-Options': reference ? 'SAMEORIGIN' : 'DENY', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
   } });

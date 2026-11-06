@@ -194,8 +194,32 @@ Cookieflare 兼容 [easychen/CookieCloud](https://github.com/easychen/CookieClou
 
 ## WorkerKit 接入
 
-通过 `vendor/worker-kit` submodule 固定公共源码版本。已有克隆先执行 `git submodule update --init --recursive`，再在项目根目录 `npm ci`，不要在 submodule 内安装依赖。后台复用布局、主题、登录页、请求取消、错误边界、原生 KV 会话和运行检查。CookieCloud 上传下载路径、加密格式、请求体限制和上传限流保持兼容；无需数据迁移或增加密码 Secret。本版不签发 API Token。
+通过 `vendor/worker-kit` submodule 固定公共源码版本。已有克隆先执行 `git submodule update --init --recursive`，再在项目根目录 `npm ci`，不要在 submodule 内安装依赖。后台使用 Nuxt UI 和 Vue Router 提供界面，复用 WorkerKit 的 HTTP 客户端、Vue 页面资源状态、接口目录提取、会话取消、原生 KV 认证和运行检查。CookieCloud 上传下载路径、加密格式、请求体限制和上传限流保持兼容；无需数据迁移或增加密码 Secret。本版不签发 API Token。
 
 列表每页最多读取 10 个数据集，串行读取以限制大快照的峰值内存，不自动轮询。UUID 是客户端访问标识，分享后台截图时应隐藏真实 UUID。
 
 后台左下角用户菜单的“API 中心”复用 WorkerKit 接口列表和 Scalar 文档，支持搜索、方法/分组筛选、参数与响应 Schema、同源调试、调用代码示例。列表与文档共用一份 OpenAPI 声明，并支持 `API_ROOT` 前缀。Scalar 通过本地固定版本 npm 包构建，不从 CDN 加载，不保存认证输入。写请求会修改真实数据；文档不新增后台 Token 签发，既有上传令牌不授予后台权限。
+
+
+## Nuxt UI 本地预览
+
+```bash
+npm run preview:nuxt
+```
+
+访问 `http://127.0.0.1:8798/admin`，用户名 `admin`，密码 `password`。预览命令只覆盖本地进程的管理员凭据，关闭本地可选上传令牌，KV 数据独立保存在 `.wrangler/nuxt-preview`，不改变线上数据和凭据。前端改动后需要重新构建并重启预览，让 Wrangler 注册新的静态资源。
+
+管理界面采用 Nuxt UI、Vue 和 Vue Router，复用 WorkerKit 的独立 HTTP 客户端、会话取消、原生 KV 认证及运行检查；表格、弹窗、通知、侧栏和主题直接使用 Nuxt UI。界面与 API 仍由同一个 Worker 提供，保留现有轻量 Worker/KV 后端，不引入 Payload 或 SonicJS。CookieCloud 同步协议和客户端加密方式不变。
+
+WorkerKit 通过固定提交的 `vendor/worker-kit` submodule 接入，不复制整套示范项目或其他前端候选。升级时单独更新 submodule，运行 `npm install` 同步本地依赖及锁文件，再运行 `npm run verify` 和浏览器检查。
+
+安装 Google Chrome 并启动预览后，运行 `npm run test:console`，检查真实 Chromium 界面、登录权限、分页、确认删除、异常重试、移动端导航、接口文档和会话注销。脚本只允许本机地址，创建并清理自己的合成快照，不使用真实 Cookie。截图保存在忽略提交的 `test-results/`。测试带 `/sync` 前缀的另一预览实例时，可设置 `CONSOLE_URL=http://127.0.0.1:8799/sync`。
+
+
+### 对比 Vben Admin
+
+同一个 Worker 也提供 `http://127.0.0.1:8798/admin/vben`。顶部“切换 Vben / 切换 Nuxt UI”链接切换界面，两套界面共用 Cookieflare 的真实管理接口、登录会话和 KV 数据。Vben 使用上游原生布局、多标签页、偏好设置和 Ant Design Vue 业务组件；不复制 WorkerKit 示例业务。为了注销时清空页面状态，默认关闭标签页内容缓存和标签持久化。
+
+运行 `npm run preview` 会构建两套界面并启动同一个本地 Worker。`npm run test:console` 检查 Nuxt UI，`npm run test:console:vben` 检查 Vben，包括跨界面免重复登录。
+
+Vben 业务源码保存在 `frontend-vben/`，公共请求、会话及接口目录逻辑复用 `frontend/` 的独立模块。构建复用 WorkerKit 的固定 Vben 上游提交和 pnpm 工作区锁文件；上游与依赖只生成在 submodule 的忽略目录 `.wrangler/ui-build/`，不改动共享示例源码。构建 Vben 需要 pnpm；首次构建会下载并校验上游源码、安装锁定依赖。单独运行 `npm run build:vben` 可重建 Vben；部署前 `npm run verify` 会构建并检查两套界面。无须增加新的 Worker 或存储绑定。

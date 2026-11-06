@@ -194,8 +194,31 @@ Released under the [GNU General Public License v3.0](LICENSE).
 
 ## WorkerKit integration
 
-The public WorkerKit submodule is pinned at `vendor/worker-kit`. Existing clones should run `git submodule update --init --recursive` before `npm ci`. Install dependencies only at the project root. The console reuses WorkerKit layout, theme, login, request cancellation, error boundaries, native KV sessions, and runtime checks. CookieCloud upload/download paths, encryption formats, payload limits, and upload rate limits remain compatible. No database migration or extra password secret is required. API tokens are not issued by this console.
+The public WorkerKit submodule is pinned at `vendor/worker-kit`. Existing clones should run `git submodule update --init --recursive` before `npm ci`. Install dependencies only at the project root. The console uses Nuxt UI with Vue Router. It reuses WorkerKit’s framework-independent HTTP client, optional Vue resource composable, OpenAPI operation catalog, session cancellation, native KV authentication, and runtime checks. Nuxt UI provides the layout, navigation, forms, table, confirmation dialog, theme, and notifications. CookieCloud upload/download paths, encryption formats, payload limits, and upload rate limits remain compatible. No database migration or extra password secret is required. API tokens are not issued by this console.
 
 The data list reads at most 10 records per page, serially, and never polls storage automatically. UUIDs are access identifiers: do not share management screenshots containing real UUIDs.
 
 The account menu opens the WorkerKit API center with a searchable catalog, method/tag filters, request/response schemas, Scalar same-origin testing, and code examples. Both views share one OpenAPI document and support `API_ROOT`. Scalar is bundled from a pinned local npm package without a CDN or persistent credentials. Write requests change real data. This integration does not issue admin API tokens; existing upload credentials grant no admin access.
+
+
+### Nuxt UI local preview
+
+```bash
+npm run preview:nuxt
+```
+
+Open `http://127.0.0.1:8798/admin` and sign in with `admin` / `password`.
+This command overrides credentials **only for the local process**, disables the optional upload token locally, and stores local KV data in `.wrangler/nuxt-preview`. Production credentials, bindings, and data are unchanged. Rebuild and restart the preview after frontend changes so Wrangler registers new hashed assets.
+
+The UI and API are served by one Worker. Cookieflare keeps its lightweight native Worker/KV backend; Payload and SonicJS are not needed for encrypted snapshot storage. The pinned WorkerKit submodule supplies shared server/client capabilities without copying the full demo or other frontend candidates into this app. Upgrade the submodule in a separate change, run `npm install` to refresh the local dependency and lockfile, then run verification before deployment.
+
+With Google Chrome installed and the local preview running, `npm run test:console` checks actual Chromium rendering and authenticated HTTP behavior, including pagination, confirmed deletion, retry, mobile navigation, same-origin API documentation, and session revocation. It only permits loopback URLs and cleans up its own synthetic snapshots. To test `API_ROOT=/sync` on another local instance, set `CONSOLE_URL=http://127.0.0.1:8799/sync`. Browser screenshots are written to ignored `test-results/`.
+
+
+### Compare Vben Admin
+
+The same Worker serves Vben at `http://127.0.0.1:8798/admin/vben`. The header links switch between Vben and Nuxt UI while sharing the real API, HttpOnly session, and KV data. Vben uses its upstream layout, tabs, preferences, and native Ant Design Vue components. Content caching and tab persistence are disabled by default so logout clears private page state.
+
+`npm run preview` builds both frontends and starts one local Worker. Run `npm run test:console` for Nuxt UI or `npm run test:console:vben` for Vben; both check cross-frontend session reuse. Vben business pages live in `frontend-vben/` and reuse framework-independent request/session/catalog modules from `frontend/`.
+
+The Vben build uses WorkerKit’s pinned upstream commit and pnpm workspace lockfile. Generated upstream source/dependencies stay in the submodule’s ignored `.wrangler/ui-build/` directory; shared example sources remain unchanged. pnpm is required, and the first build downloads and verifies upstream source and installs locked dependencies. `npm run build:vben` builds Vben alone; `npm run verify` builds and checks both frontends before deployment. No additional Worker or storage binding is required.

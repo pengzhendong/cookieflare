@@ -81,6 +81,20 @@ describe('Cookieflare management API', () => {
     expect(shell).not.toContain('console.js');
   });
 
+  it('serves Vben under the same API root and fails closed when admin credentials are missing', async () => {
+    const { fetch, env } = fixture('/sync');
+    const page = await fetch('/admin/vben');
+    expect(page.status).toBe(200);
+    expect(page.headers.get('x-frame-options')).toBe('DENY');
+    const html = await page.text();
+    expect(html).toContain('/sync/admin-assets/vben/console.js');
+    expect(html).toContain('/sync/admin-assets/vben/console.css');
+    expect(html).toContain('data-api-root="/sync"');
+    expect((await fetch('/admin/api/datasets')).status).toBe(401);
+    env.ADMIN_PASSWORD = '';
+    expect((await fetch('/admin/vben')).status).toBe(503);
+  });
+
   it('uses the configured username for both session and legacy Basic authentication, invalidating prior identities', async () => {
     const { fetch, env } = fixture();
     const oldCookie = await login(fetch);

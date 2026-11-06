@@ -1,0 +1,1 @@
+<template><section class="business-page"><AResult status="404" title="页面不存在" sub-title="请从左侧导航继续访问。"><template #extra><RouterLink to="/datasets"><AButton type="primary">返回数据集</AButton></RouterLink></template></AResult></section></template>

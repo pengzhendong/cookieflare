@@ -1,0 +1,17 @@
+{
+  "name": "@worker-kit/vben-preview",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vben/layouts": "workspace:*",
+    "@vben/hooks": "workspace:*",
+    "@vben/locales": "workspace:*",
+    "@vben/preferences": "workspace:*",
+    "@vben/stores": "workspace:*",
+    "@vben/styles": "workspace:*",
+    "ant-design-vue": "catalog:",
+    "echarts": "catalog:",
+    "vue": "catalog:",
+    "vue-router": "catalog:"
+  }
+}

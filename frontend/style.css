@@ -1,0 +1,19 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+@theme { --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; }
+html, body, #root { height: 100%; min-height: 0; margin: 0; }
+body { font-size: 14px; }
+.content-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.page-container { width: 100%; max-width: 1440px; padding: 28px 32px; margin: 0 auto; min-width: 0; }
+.page-heading { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+.page-heading h1 { font-size: 26px; line-height: 1.4; font-weight: 650; margin: 0 0 6px; letter-spacing: -.5px; }
+.page-heading p { margin: 0; color: var(--ui-text-muted); }
+.metric-value { font-size: 28px; line-height: 1.4; font-weight: 600; margin-top: 10px; }
+.details-list { display: grid; gap: 0; }
+.details-list > div { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 20px; padding: 14px 0; border-bottom: 1px solid var(--ui-border); }
+.details-list > div:last-child { border-bottom: 0; }
+.details-list dt { color: var(--ui-text-muted); }
+.details-list dd { overflow-wrap: anywhere; }
+.reference-frame { width: 100%; height: max(440px, calc(100dvh - 370px)); border: 0; border-radius: 8px; background: var(--ui-bg); }
+@media (max-width: 639px) { .page-container { padding: 20px 16px; } .page-heading h1 { font-size: 24px; } .details-list > div { grid-template-columns: 1fr; gap: 6px; } }

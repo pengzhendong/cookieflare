@@ -514,7 +514,7 @@ async function handleAdminPage(
   env: WorkerEnv,
 ): Promise<Response> {
   if (!env.ADMIN_PASSWORD) return adminTextResponse("Admin password is not configured", 503);
-  return adminConsolePage(normalizeApiRoot(env.API_ROOT));
+  return adminConsolePage(normalizeApiRoot(env.API_ROOT), false, new URL(request.url).pathname.endsWith('/admin/vben') ? 'vben' : 'nuxt');
 }
 
 async function handleAdminStatus(
@@ -565,7 +565,7 @@ const worker: ExportedHandler<WorkerEnv> = {
       return jsonResponse({ status: "OK", storage: "cloudflare-kv" });
     }
 
-    if (request.method === "GET" && url.pathname === apiPath(apiRoot, ADMIN_PATH)) {
+    if (request.method === "GET" && [apiPath(apiRoot, ADMIN_PATH), apiPath(apiRoot, `${ADMIN_PATH}/vben`)].includes(url.pathname)) {
       return handleAdminPage(request, env);
     }
 

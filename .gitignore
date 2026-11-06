@@ -7,3 +7,8 @@ wrangler.production.jsonc
 worker-configuration.d.ts
 coverage/
 public/admin-assets/
+
+test-results/
+playwright-report/
+auto-imports.d.ts
+components.d.ts
