@@ -19,7 +19,8 @@ export const ADMIN_ICON_PATH = '/admin-assets/cookieflare-icon.svg';
 
 export function adminConsolePage(root: string, reference = false) {
   const entry = reference ? 'reference' : 'console';
-  return new Response(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/svg+xml" href="${root}${ADMIN_ICON_PATH}"><link rel="stylesheet" href="${root}/admin-assets/${entry}.css"><title>Cookieflare${reference ? ' API 文档' : ''}</title></head><body data-api-root="${root.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')}"><div id="root"></div><script type="module" src="${root}/admin-assets/${entry}.js"></script></body></html>`, { headers: {
+  const loading = reference ? '' : '<p role="status" class="grid min-h-dvh place-items-center text-muted">加载中…</p>';
+  return new Response(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/svg+xml" href="${root}${ADMIN_ICON_PATH}"><link rel="stylesheet" href="${root}/admin-assets/${entry}.css"><title>Cookieflare${reference ? ' API 文档' : ''}</title></head><body data-api-root="${root.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')}"><div id="root">${loading}</div><script type="module" src="${root}/admin-assets/${entry}.js"></script></body></html>`, { headers: {
     'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors ${reference ? "'self'" : "'none'"}`, 'X-Frame-Options': reference ? 'SAMEORIGIN' : 'DENY', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
   } });
 }
