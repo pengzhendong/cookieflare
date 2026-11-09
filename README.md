@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="frontend/favicon.svg" alt="Cookieflare logo" width="112" height="112">
+
 # Cookieflare
 
 **A tiny CookieCloud-compatible sync server on your own Cloudflare account.**

@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="frontend/favicon.svg" alt="Cookieflare 标志" width="112" height="112">
+
 # Cookieflare
 
 **在自己的 Cloudflare 账号中运行一个轻量的 CookieCloud 兼容同步服务。**
