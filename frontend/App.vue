@@ -2,6 +2,7 @@
 import { computed, nextTick, onErrorCaptured, onScopeDispose, reactive, ref, shallowRef, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useToast } from '@nuxt/ui/composables';
+import ConsoleLogin from '@pengzhendong/worker-kit/vue/console-login';
 import { zh_cn } from '@nuxt/ui/locale';
 import { api, auth, ApiClientError, base, isRequestCancelled, path, scope, type Session } from './api';
 
@@ -71,20 +72,17 @@ void inspectSession();
       </UCard>
     </main>
     <div v-else-if="session === undefined" role="status" class="min-h-dvh grid place-items-center text-muted">正在确认登录状态…</div>
-    <main v-else-if="!session" class="min-h-dvh grid place-items-center bg-elevated/30 p-5">
-      <UCard class="w-full max-w-sm">
-        <div class="flex items-center gap-3 mb-6"><img :src="`${base}/admin-assets/cookieflare-icon.svg`" width="38" height="38" alt="" /><div><h1 class="text-xl font-semibold">Cookieflare</h1><p class="text-sm text-muted">登录管理界面</p></div></div>
+    <ConsoleLogin v-else-if="!session" name="Cookieflare" :icon="`${base}/admin-assets/cookieflare-icon.svg`">
         <UForm :state="form" class="space-y-5" @submit="signIn">
           <UAlert v-if="loginError" color="error" :description="loginError" role="alert" />
           <UFormField name="username" label="用户名" required><UInput v-model="form.username" name="username" autocomplete="username" required :disabled="signingIn" class="w-full" /></UFormField>
           <UFormField name="password" label="密码" required><UInput v-model="form.password" name="password" type="password" autocomplete="current-password" required :disabled="signingIn" class="w-full" /></UFormField>
           <UButton type="submit" block :loading="signingIn">登录</UButton>
         </UForm>
-        <p class="text-xs text-muted mt-5 leading-5">此账户用于管理同步服务，与客户端的 CookieCloud 加密密码分开。</p>
-      </UCard>
-    </main>
+        <template #footer><p class="text-xs text-muted leading-5">此账户用于管理同步服务，与客户端的 CookieCloud 加密密码分开。</p></template>
+    </ConsoleLogin>
     <UDashboardGroup v-else unit="px" storage="local" storage-key="cookieflare-layout">
-      <UDashboardSidebar v-model:open="open" v-model:collapsed="collapsed" collapsible :default-size="232" :min-size="232" :collapsed-size="72" :ui="{ root: 'bg-elevated/40', header: 'h-12 px-5', body: 'px-3', footer: 'border-t border-default p-3' }">
+      <UDashboardSidebar data-wk-console-sidebar v-model:open="open" v-model:collapsed="collapsed" collapsible :default-size="232" :min-size="232" :collapsed-size="72" :ui="{ root: 'bg-elevated/40', header: 'h-12 px-5', body: 'px-3', footer: 'border-t border-default p-3' }">
         <template #header="{ collapsed: small }"><RouterLink to="/datasets" class="flex items-center gap-2.5 font-semibold text-lg"><img :src="`${base}/admin-assets/cookieflare-icon.svg`" width="30" height="30" alt="" /><span v-if="!small">Cookieflare</span></RouterLink></template>
         <template #default="{ collapsed: small }"><UNavigationMenu :items="navigation" :collapsed="small" orientation="vertical" tooltip :ui="{ link: 'h-11 px-3 gap-3', linkLeadingIcon: 'size-5' }" /></template>
         <template #footer="{ collapsed: small }"><UDropdownMenu :items="accountItems" :content="{ side: 'top', align: 'start' }" :ui="{ content: 'w-52' }">
