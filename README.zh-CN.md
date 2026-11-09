@@ -156,7 +156,7 @@ npx wrangler secret put COOKIECLOUD_UPDATE_TOKEN
 | `POST` | `/update` | 保存 CookieCloud 加密数据 |
 | `GET` / `POST` | `/get/:uuid` | 返回对应 UUID 的加密数据 |
 | `GET` | `/health` | 检查 Worker 是否正常响应 |
-| `GET` | `/admin` | 打开 WorkerKit 后台及会话登录页 |
+| `GET` | `/admin` | 打开 Cookieflare 管理后台 |
 | `GET` | `/admin/reference` | 独立 Scalar 文档壳；接口文档本身仍要求后台会话 |
 | `GET` | `/admin/api/openapi.json` | 受后台会话保护的 OpenAPI 3.1 文档 |
 | `GET` | `/admin/status` | 旧汇总状态接口，保留 Basic Auth |
@@ -194,16 +194,15 @@ Cookieflare 兼容 [easychen/CookieCloud](https://github.com/easychen/CookieClou
 
 本项目使用 [GNU General Public License v3.0](LICENSE) 发布。
 
-## WorkerKit 接入
+## 管理后台
 
-通过 `vendor/worker-kit` submodule 固定公共源码版本。已有克隆先执行 `git submodule update --init --recursive`，再在项目根目录 `npm ci`，不要在 submodule 内安装依赖。后台使用 Nuxt UI 和 Vue Router 提供界面，复用 WorkerKit 的 HTTP 客户端、Vue 页面资源状态、接口目录提取、会话取消、原生 KV 认证和运行检查。CookieCloud 上传下载路径、加密格式、请求体限制和上传限流保持兼容；无需数据迁移或增加密码 Secret。本版不签发 API Token。
+后台使用 Nuxt UI 和 Vue Router。克隆时如果没有拉取子模块，先执行 `git submodule update --init --recursive`，再到项目根目录运行 `npm ci`。
 
 列表每页最多读取 10 个数据集，串行读取以限制大快照的峰值内存，不自动轮询。UUID 是客户端访问标识，分享后台截图时应隐藏真实 UUID。
 
-后台左下角用户菜单的“API 中心”复用 WorkerKit 接口列表和 Scalar 文档，支持搜索、方法/分组筛选、参数与响应 Schema、同源调试、调用代码示例。列表与文档共用一份 OpenAPI 声明，并支持 `API_ROOT` 前缀。Scalar 通过本地固定版本 npm 包构建，不从 CDN 加载，不保存认证输入。写请求会修改真实数据；文档不新增后台 Token 签发，既有上传令牌不授予后台权限。
+后台左下角用户菜单的“API 中心”提供接口列表和 Scalar 文档，支持搜索、方法/分组筛选、参数与响应 Schema、同源调试、调用代码示例。列表与文档共用一份 OpenAPI 声明，并支持 `API_ROOT` 前缀。Scalar 通过本地固定版本 npm 包构建，不从 CDN 加载，不保存认证输入。写请求会修改真实数据；文档不新增后台 Token 签发，既有上传令牌不授予后台权限。
 
-
-## Nuxt UI 本地预览
+### Nuxt UI 本地预览
 
 ```bash
 npm run preview
@@ -211,15 +210,8 @@ npm run preview
 
 访问 `http://127.0.0.1:8798/admin`，用户名 `admin`，密码 `password`。预览命令只覆盖本地进程的管理员凭据，关闭本地可选上传令牌，KV 数据独立保存在 `.wrangler/nuxt-preview`，不改变线上数据和凭据。前端改动后需要重新构建并重启预览，让 Wrangler 注册新的静态资源。
 
-管理界面采用 Nuxt UI、Vue 和 Vue Router，复用 WorkerKit 的独立 HTTP 客户端、会话取消、原生 KV 认证及运行检查；表格、弹窗、通知、侧栏和主题直接使用 Nuxt UI。界面与 API 仍由同一个 Worker 提供，保留现有轻量 Worker/KV 后端，不引入 Payload 或 SonicJS。CookieCloud 同步协议和客户端加密方式不变。
-
-WorkerKit 通过固定提交的 `vendor/worker-kit` submodule 接入，不复制整套示范项目或其他前端候选。升级时单独更新 submodule，运行 `npm install` 同步本地依赖及锁文件，再运行 `npm run verify` 和浏览器检查。
+同一个 Cloudflare Worker 提供管理界面和 API，Cloudflare KV 保存加密快照和后台会话。
 
 安装 Google Chrome 并启动预览后，运行 `npm run test:console`，检查真实 Chromium 界面、登录权限、分页、确认删除、异常重试、移动端导航、接口文档和会话注销。脚本只允许本机地址，创建并清理自己的合成快照，不使用真实 Cookie。截图保存在忽略提交的 `test-results/`。测试带 `/sync` 前缀的另一预览实例时，可设置 `CONSOLE_URL=http://127.0.0.1:8799/sync`。
 
-
-### WorkerKit 0.5 升级验证
-
-共享 submodule 固定为 `5eb6c60`（0.5.0）。用 `npm run verify` 跑单元测试和部署预检，用 `npm run test:console` 对隔离预览做浏览器验收。此前固定的是 `d19416e`（0.4.0）。已保存的 `/admin/vben` 书签会跳转到 `/admin`。
-
-回滚共享源码时，在 `vendor/worker-kit` 内 checkout 审核过的提交，用 `git add vendor/worker-kit` 暂存 gitlink，供 doctor 检查所选版本，再执行 `npm install`、`npm run verify`，通过后提交。数据库及业务数据回滚另行处理。
+已保存的 `/admin/vben` 书签会跳转到 `/admin`。

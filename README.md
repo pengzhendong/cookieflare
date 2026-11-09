@@ -156,7 +156,7 @@ Set `API_ROOT` to a value such as `/sync` to expose `/sync/update`, `/sync/get/:
 | `POST` | `/update` | Store an encrypted CookieCloud payload |
 | `GET` / `POST` | `/get/:uuid` | Return the encrypted payload for a UUID |
 | `GET` | `/health` | Check whether the Worker is responding |
-| `GET` | `/admin` | Open the WorkerKit console and session login |
+| `GET` | `/admin` | Open the Cookieflare management console |
 | `GET` | `/admin/reference` | Standalone Scalar shell; the document still requires an admin session |
 | `GET` | `/admin/api/openapi.json` | Session-protected OpenAPI 3.1 document |
 | `GET` | `/admin/status` | Legacy aggregate status endpoint (Basic Auth) |
@@ -194,14 +194,13 @@ Cookieflare follows the client protocol established by [easychen/CookieCloud](ht
 
 Released under the [GNU General Public License v3.0](LICENSE).
 
-## WorkerKit integration
+## Management console
 
-The public WorkerKit submodule is pinned at `vendor/worker-kit`. Existing clones should run `git submodule update --init --recursive` before `npm ci`. Install dependencies only at the project root. The console uses Nuxt UI with Vue Router. It reuses WorkerKit’s framework-independent HTTP client, optional Vue resource composable, OpenAPI operation catalog, session cancellation, native KV authentication, and runtime checks. Nuxt UI provides the layout, navigation, forms, table, confirmation dialog, theme, and notifications. CookieCloud upload/download paths, encryption formats, payload limits, and upload rate limits remain compatible. No database migration or extra password secret is required. API tokens are not issued by this console.
+The console uses Nuxt UI and Vue Router. If you cloned without submodules, run `git submodule update --init --recursive` before running `npm ci` at the project root.
 
 The data list reads at most 10 records per page, serially, and never polls storage automatically. UUIDs are access identifiers: do not share management screenshots containing real UUIDs.
 
-The account menu opens the WorkerKit API center with a searchable catalog, method/tag filters, request/response schemas, Scalar same-origin testing, and code examples. Both views share one OpenAPI document and support `API_ROOT`. Scalar is bundled from a pinned local npm package without a CDN or persistent credentials. Write requests change real data. This integration does not issue admin API tokens; existing upload credentials grant no admin access.
-
+The account menu opens the API center with a searchable catalog, method/tag filters, request/response schemas, Scalar same-origin testing, and code examples. Both views share one OpenAPI document and support `API_ROOT`. Scalar is bundled from a pinned local npm package without a CDN or persistent credentials. Write requests change real data. This integration does not issue admin API tokens; existing upload credentials grant no admin access.
 
 ### Nuxt UI local preview
 
@@ -212,13 +211,8 @@ npm run preview
 Open `http://127.0.0.1:8798/admin` and sign in with `admin` / `password`.
 This command overrides credentials **only for the local process**, disables the optional upload token locally, and stores local KV data in `.wrangler/nuxt-preview`. Production credentials, bindings, and data are unchanged. Rebuild and restart the preview after frontend changes so Wrangler registers new hashed assets.
 
-The UI and API are served by one Worker. Cookieflare keeps its lightweight native Worker/KV backend; Payload and SonicJS are not needed for encrypted snapshot storage. The pinned WorkerKit submodule supplies shared server/client capabilities without copying the full demo or other frontend candidates into this app. Upgrade the submodule in a separate change, run `npm install` to refresh the local dependency and lockfile, then run verification before deployment.
+One Cloudflare Worker serves the console and API, and Cloudflare KV stores the encrypted snapshots and management sessions.
 
 With Google Chrome installed and the local preview running, `npm run test:console` checks actual Chromium rendering and authenticated HTTP behavior, including pagination, confirmed deletion, retry, mobile navigation, same-origin API documentation, and session revocation. It only permits loopback URLs and cleans up its own synthetic snapshots. To test `API_ROOT=/sync` on another local instance, set `CONSOLE_URL=http://127.0.0.1:8799/sync`. Browser screenshots are written to ignored `test-results/`.
 
-
-### WorkerKit 0.5 upgrade verification
-
-The submodule is pinned to `5eb6c60` (0.5.0). Run `npm run verify` for the unit tests and deployment dry-run, and `npm run test:console` against an isolated preview for the browser checks. The previous pin was `d19416e` (0.4.0). Existing `/admin/vben` bookmarks redirect to `/admin`.
-
-To roll back shared source, check out the reviewed commit inside `vendor/worker-kit`, stage the gitlink with `git add vendor/worker-kit` so doctor can verify the selected pin, run `npm install`, then `npm run verify`. Commit only after those checks pass. Database or business-data rollback is separate.
+Existing `/admin/vben` bookmarks redirect to `/admin`.
