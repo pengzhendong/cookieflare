@@ -48,8 +48,8 @@ async function signOut() {
 function retryApplication() { if (failed.value) location.reload(); else void inspectSession(); }
 const navigation = [
   { label: '数据集', icon: 'i-lucide-database', to: '/datasets' },
-  { label: '运行状态', icon: 'i-lucide-activity', to: '/runtime' },
   { label: '服务配置', icon: 'i-lucide-settings-2', to: '/configuration' },
+  { label: '运行状态', icon: 'i-lucide-activity', to: '/runtime' },
 ].map(item => ({ ...item, onSelect: () => { open.value = false; } }));
 const accountItems = computed(() => [[
   { label: '当前账户', icon: 'i-lucide-user-round', to: '/account' },
