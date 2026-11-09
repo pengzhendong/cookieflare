@@ -13,8 +13,16 @@
     }
   },
   "vars": {
-    "API_ROOT": ""
+    "API_ROOT": "",
+    "CLOUDFLARE_ANALYTICS_ACCOUNT_ID": "ca8337c3e6b005b2ce015b54125a3bc2"
   },
+  "secrets_store_secrets": [
+    {
+      "binding": "WORKER_RUNTIME_ANALYTICS_TOKEN",
+      "store_id": "9a0ef90075c748d7a255f372960a03cb",
+      "secret_name": "WORKER_RUNTIME_ANALYTICS_TOKEN"
+    }
+  ],
   "ratelimits": [
     {
       "name": "RATE_LIMITER",

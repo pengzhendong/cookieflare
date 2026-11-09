@@ -47,7 +47,7 @@ export async function adminApi(request: Request, env: WorkerEnv, root: string): 
     if (path === '/runtime' && request.method === 'GET') return json(await inspectRuntime({ application: { name: 'Cookieflare', version: '0.1.0' }, environment: ['127.0.0.1', 'localhost'].includes(url.hostname) ? 'local' : 'production', version: env.CF_VERSION_METADATA, checks: [{ name: 'KV', kind: 'kv', description: '加密快照与可注销的后台会话', check: () => env.COOKIE_STORE.get('workerkit:health') }] }));
     if (path === '/runtime/metrics' && request.method === 'GET') {
       const accountId = env.CLOUDFLARE_ANALYTICS_ACCOUNT_ID?.trim();
-      const apiToken = env.CLOUDFLARE_ANALYTICS_TOKEN?.trim();
+      const apiToken = (accountId && env.WORKER_RUNTIME_ANALYTICS_TOKEN) || env.CLOUDFLARE_ANALYTICS_TOKEN?.trim();
       return json(await readCloudflareMetrics(accountId || apiToken ? {
         accountId,
         apiToken,

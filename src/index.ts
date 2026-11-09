@@ -1,3 +1,4 @@
+import type { CloudflareMetricsSecret } from '@pengzhendong/worker-kit/runtime';
 import { ADMIN_ICON_PATH, adminApi, adminConsolePage } from "./admin";
 import { adminUsername } from './credentials';
 import { COOKIE_STORE_PREFIX, keyForUuid, normalizeUuid } from "./keys";
@@ -8,7 +9,7 @@ const ADMIN_PATH = "/admin";
 
 export type WorkerEnv = Omit<
   Env,
-  "API_ROOT" | "ADMIN_PASSWORD" | "ADMIN_USERNAME" | "RATE_LIMITER" | "IP_RATE_LIMITER" | "ASSETS" | "CF_VERSION_METADATA" | "ADMIN_LOGIN_RATE_LIMITER"
+  "API_ROOT" | "ADMIN_PASSWORD" | "ADMIN_USERNAME" | "RATE_LIMITER" | "IP_RATE_LIMITER" | "ASSETS" | "CF_VERSION_METADATA" | "ADMIN_LOGIN_RATE_LIMITER" | "CLOUDFLARE_ANALYTICS_ACCOUNT_ID" | "WORKER_RUNTIME_ANALYTICS_TOKEN"
 > & {
   /** Optional path prefix for deployments behind a subpath. */
   API_ROOT?: string;
@@ -26,6 +27,7 @@ export type WorkerEnv = Omit<
   CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
   CLOUDFLARE_ANALYTICS_ACCOUNT_ID?: string;
   CLOUDFLARE_ANALYTICS_TOKEN?: string;
+  WORKER_RUNTIME_ANALYTICS_TOKEN?: CloudflareMetricsSecret;
   CLOUDFLARE_ANALYTICS_WORKER_NAME?: string;
   ASSETS?: Fetcher;
 };
