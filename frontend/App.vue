@@ -6,6 +6,7 @@ import { zh_cn } from '@nuxt/ui/locale';
 import { api, auth, ApiClientError, base, isRequestCancelled, path, scope, type Session } from './api';
 
 const route = useRoute(), toast = useToast();
+const pageTitle = computed(() => String(route.meta.title || '管理界面'));
 const session = shallowRef<Session | null>(), sessionError = ref(''), loginError = ref('');
 const signingIn = ref(false), signingOut = ref(false), open = ref(false), collapsed = ref(false);
 const generation = ref(scope.version), failed = ref(false);
@@ -56,7 +57,7 @@ const accountItems = computed(() => [[
 ], [{ label: '退出登录', icon: 'i-lucide-log-out', color: 'error' as const, disabled: signingOut.value, onSelect: signOut }]]);
 watch(() => route.fullPath, async () => {
   open.value = false; failed.value = false;
-  document.title = `${String(route.meta.title || '管理界面')} · Cookieflare`;
+  document.title = `${pageTitle.value} · Cookieflare`;
   await nextTick(); document.querySelector('[data-content-scroll]')?.scrollTo({ top: 0 });
 }, { immediate: true });
 void inspectSession();
@@ -72,30 +73,30 @@ void inspectSession();
     <div v-else-if="session === undefined" role="status" class="min-h-dvh grid place-items-center text-muted">正在确认登录状态…</div>
     <main v-else-if="!session" class="min-h-dvh grid place-items-center bg-elevated/30 p-5">
       <UCard class="w-full max-w-sm">
-        <div class="flex items-center gap-3 mb-6"><img :src="`${base}/admin-assets/favicon.svg`" width="38" height="38" alt="" /><div><h1 class="text-xl font-semibold">Cookieflare</h1><p class="text-sm text-muted">登录管理界面</p></div></div>
+        <div class="flex items-center gap-3 mb-6"><img :src="`${base}/admin-assets/cookieflare-icon.svg`" width="38" height="38" alt="" /><div><h1 class="text-xl font-semibold">Cookieflare</h1><p class="text-sm text-muted">登录管理界面</p></div></div>
         <UForm :state="form" class="space-y-5" @submit="signIn">
           <UAlert v-if="loginError" color="error" :description="loginError" role="alert" />
           <UFormField name="username" label="用户名" required><UInput v-model="form.username" name="username" autocomplete="username" required :disabled="signingIn" class="w-full" /></UFormField>
           <UFormField name="password" label="密码" required><UInput v-model="form.password" name="password" type="password" autocomplete="current-password" required :disabled="signingIn" class="w-full" /></UFormField>
           <UButton type="submit" block :loading="signingIn">登录</UButton>
         </UForm>
-        <p class="text-xs text-muted mt-5 leading-5">此账户用于管理同步服务，与客户端的 CookieCloud 加密密码分开。</p><UButton variant="link" :href="`${base}/admin/vben#${route.path}`" class="mt-3">切换 Vben</UButton>
+        <p class="text-xs text-muted mt-5 leading-5">此账户用于管理同步服务，与客户端的 CookieCloud 加密密码分开。</p>
       </UCard>
     </main>
     <UDashboardGroup v-else unit="px" storage="local" storage-key="cookieflare-layout">
-      <UDashboardSidebar v-model:open="open" v-model:collapsed="collapsed" collapsible :default-size="232" :min-size="232" :collapsed-size="72" :ui="{ root: 'bg-elevated/40', header: 'h-16 px-5', body: 'px-3', footer: 'border-t border-default p-3' }">
-        <template #header="{ collapsed: small }"><RouterLink to="/datasets" class="flex items-center gap-2.5 font-semibold text-lg"><img :src="`${base}/admin-assets/favicon.svg`" width="30" height="30" alt="" /><span v-if="!small">Cookieflare</span></RouterLink></template>
+      <UDashboardSidebar v-model:open="open" v-model:collapsed="collapsed" collapsible :default-size="232" :min-size="232" :collapsed-size="72" :ui="{ root: 'bg-elevated/40', header: 'h-12 px-5', body: 'px-3', footer: 'border-t border-default p-3' }">
+        <template #header="{ collapsed: small }"><RouterLink to="/datasets" class="flex items-center gap-2.5 font-semibold text-lg"><img :src="`${base}/admin-assets/cookieflare-icon.svg`" width="30" height="30" alt="" /><span v-if="!small">Cookieflare</span></RouterLink></template>
         <template #default="{ collapsed: small }"><UNavigationMenu :items="navigation" :collapsed="small" orientation="vertical" tooltip :ui="{ link: 'h-11 px-3 gap-3', linkLeadingIcon: 'size-5' }" /></template>
         <template #footer="{ collapsed: small }"><UDropdownMenu :items="accountItems" :content="{ side: 'top', align: 'start' }" :ui="{ content: 'w-52' }">
           <UButton variant="ghost" color="neutral" class="w-full p-2" :square="small" aria-label="账户菜单" :loading="signingOut"><UAvatar :text="session.username.slice(0, 1).toUpperCase()" size="sm" /><span v-if="!small" class="text-left flex-1 truncate">{{ session.username }}</span><UIcon v-if="!small" name="i-lucide-chevrons-up-down" class="size-4" /></UButton>
         </UDropdownMenu></template>
       </UDashboardSidebar>
-      <UDashboardPanel :ui="{ body: 'p-0 gap-0' }">
-        <template #header><UDashboardNavbar title="Cookieflare" :ui="{ root: 'h-16 px-4 lg:px-8', title: 'text-sm font-medium' }">
+      <UDashboardPanel :ui="{ body: 'p-0 sm:p-0 gap-0 sm:gap-0' }">
+        <template #header><UDashboardNavbar data-console-navbar :title="pageTitle" :ui="{ root: 'h-12 px-4 lg:px-6', title: 'text-sm font-medium' }">
           <template #leading><UDashboardSidebarCollapse class="hidden lg:flex" /></template>
-          <template #right><UBadge color="neutral" variant="subtle" class="hidden sm:inline-flex">Cloudflare KV</UBadge><UButton color="neutral" variant="outline" size="sm" :href="`${base}/admin/vben#${route.path}`">切换 Vben</UButton><UColorModeButton aria-label="切换明暗主题" /></template>
+          <template #right><UColorModeButton aria-label="切换明暗主题" /></template>
         </UDashboardNavbar></template>
-        <template #body><div data-content-scroll class="content-scroll"><div class="page-container"><RouterView :key="`${generation}:${route.path}`" /></div></div></template>
+        <template #body><div data-content-scroll class="content-scroll"><main class="page-container"><RouterView :key="`${generation}:${route.path}`" /></main></div></template>
       </UDashboardPanel>
     </UDashboardGroup>
   </UApp>

@@ -12,22 +12,16 @@
     "dev": "npm run build:console && wrangler dev --local",
     "deploy": "npm run build:console && wrangler deploy --keep-vars",
     "types": "wrangler types",
-    "check": "npm run build:console && tsc --noEmit && vue-tsc -p tsconfig.web.json --noEmit && npm run check:vben && npm run doctor && wrangler deploy --dry-run",
+    "check": "npm run build:console && tsc --noEmit && vue-tsc -p tsconfig.web.json --noEmit && npm run doctor && wrangler deploy --dry-run",
     "test": "vitest run",
     "verify": "npm run types && npm run check && npm test",
     "build:console": "node scripts/build-console.mjs",
     "doctor": "node vendor/worker-kit/src/tooling/doctor.mjs --project .",
-    "preview:nuxt": "npm run preview",
     "test:console": "node scripts/check-console.mjs",
-    "build:vben": "node scripts/build-vben.mjs",
-    "check:vben": "node scripts/build-vben.mjs --check",
-    "preview": "npm run build:console && wrangler dev --local --ip 127.0.0.1 --port 8798 --inspector-port 9238 --persist-to .wrangler/nuxt-preview --var ADMIN_USERNAME:admin --var ADMIN_PASSWORD:password --var COOKIECLOUD_UPDATE_TOKEN:",
-    "test:console:vben": "node scripts/check-console.mjs --vben"
+    "preview": "npm run build:console && wrangler dev --local --ip 127.0.0.1 --port 8798 --inspector-port 9238 --persist-to .wrangler/nuxt-preview --var ADMIN_USERNAME:admin --var ADMIN_PASSWORD:password --var COOKIECLOUD_UPDATE_TOKEN:"
   },
   "devDependencies": {
-    "@iconify-json/ep": "1.2.4",
     "@iconify-json/lucide": "1.2.151",
-    "@iconify-json/mdi": "1.2.3",
     "@playwright/test": "1.64.1",
     "@types/node": "26.6.5",
     "@vitejs/plugin-vue": "6.0.10",
@@ -38,7 +32,6 @@
     "wrangler": "4.152.0"
   },
   "dependencies": {
-    "@iconify/vue": "5.0.5",
     "@nuxt/ui": "4.12.0",
     "@pengzhendong/worker-kit": "file:vendor/worker-kit",
     "@scalar/api-reference": "1.75.1",

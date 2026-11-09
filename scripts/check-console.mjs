@@ -6,8 +6,7 @@ import { chromium, expect, request } from '@playwright/test';
 // This check creates opaque synthetic snapshots and deletes them. Never target production.
 const origin = new URL(process.env.CONSOLE_URL || 'http://127.0.0.1:8798');
 assert(['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname), 'Console checks only run against loopback');
-const vben = process.argv.includes('--vben') || process.env.CONSOLE_FRONTEND === 'vben';
-const consolePath = vben ? '/admin/vben' : '/admin';
+const consolePath = '/admin';
 const prefix = origin.pathname.replace(/\/$/, '');
 const url = path => `${origin.origin}${prefix}${path}`;
 const fixtures = Array.from({ length: 12 }, (_, index) => `preview-${randomUUID()}-${index}`);
@@ -22,11 +21,22 @@ const errors = [], foreignRequests = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('request', req => { if (new URL(req.url()).origin !== origin.origin) foreignRequests.push(req.url()); });
 const api = context.request;
-const out = `test-results/${vben ? 'vben' : 'nuxt'}-console${prefix ? '-prefix' : ''}`;
+const out = `test-results/nuxt-console${prefix ? '-prefix' : ''}`;
 await mkdir(out, { recursive: true });
 async function navigate(label) {
-  if (vben) await page.locator('[data-layout-region="sidebar"]:visible').getByText(label, { exact: true }).click();
-  else await page.getByRole('link', { name: label, exact: true }).click();
+  await page.getByRole('link', { name: label, exact: true }).click();
+}
+const navbar = page.locator('[data-console-navbar]');
+async function expectPageTitle(title) {
+  const options = { name: title, exact: true };
+  await expect(navbar.getByRole('heading', options)).toBeVisible();
+  await expect(page.getByRole('heading', options)).toHaveCount(1);
+  await expect(page).toHaveTitle(`${title} · Cookieflare`);
+}
+async function expectIntroGap(pixels) {
+  const top = await navbar.boundingBox();
+  const intro = await page.locator('main .page-intro').boundingBox();
+  assert.equal(Math.round(intro.y - top.y - top.height), pixels);
 }
 const uploaded = [];
 try {
@@ -40,21 +50,14 @@ try {
     uploaded.push(uuid);
   }
   await page.goto(url(consolePath));
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', `${prefix}/admin-assets/cookieflare-icon.svg`);
   await page.getByLabel('用户名', { exact: true }).fill('admin');
   await page.getByLabel('密码', { exact: true }).fill('password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '数据集', exact: true })).toBeVisible();
+  await expectPageTitle('数据集');
+  await expectIntroGap(16);
+  await expect(page.getByText('Cloudflare KV', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '下一页', exact: true })).toBeEnabled();
-  if (vben) {
-    await page.getByText('搜索', { exact: true }).first().click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await page.locator('[data-layout-region="header"] button:has(svg.lucide-settings)').click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('dialog').locator('button:has(svg.lucide-x)').click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-  }
   const list = await (await api.get(url('/admin/api/datasets'))).json();
   assert.equal(list.items.length, 10); assert.ok(list.cursor); assert.equal(JSON.stringify(list).includes(marker), false);
   const first = list.items.find(item => fixtures.includes(item.uuid))?.uuid;
@@ -86,25 +89,23 @@ try {
   await page.screenshot({ animations: 'disabled', path: `${out}/datasets-desktop.png` });
 
   await navigate('运行状态');
+  await expectPageTitle('运行状态');
   await expect(page.getByText('依赖正常', { exact: true })).toBeVisible();
   await expect(page.getByText('平台指标未接入', { exact: true })).toBeVisible();
-  const content = page.locator(vben ? '[data-layout-region="scroll"]' : '[data-content-scroll]');
+  const content = page.locator('[data-content-scroll]');
   await page.setViewportSize({ width: 1440, height: 620 });
-  const header = vben ? page.locator('[data-layout-region="header"]:visible') : page.getByRole('heading', { name: 'Cookieflare', exact: true });
-  const before = await header.boundingBox();
+  const before = await navbar.boundingBox();
   await content.evaluate(element => { element.scrollTop = element.scrollHeight; });
   assert.ok(await content.evaluate(element => element.scrollTop > 0), 'Content must own the vertical scroll');
-  assert.equal(Math.round((await header.boundingBox()).y), Math.round(before.y), 'Navbar must remain fixed');
+  assert.equal(Math.round((await navbar.boundingBox()).y), Math.round(before.y), 'Navbar must remain fixed');
   await navigate('服务配置');
+  await expectPageTitle('服务配置');
   await expect(page.getByText('Cloudflare KV', { exact: true }).last()).toBeVisible();
   await expect.poll(() => content.evaluate(element => element.scrollTop)).toBe(0);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  if (vben) await navigate('API 中心');
-  else {
-    await page.getByRole('button', { name: '账户菜单', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'API 中心', exact: true }).click();
-  }
-  await expect(page.getByRole('heading', { name: 'API 中心', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '账户菜单', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'API 中心', exact: true }).click();
+  await expectPageTitle('API 中心');
   await page.getByRole('textbox', { name: '搜索接口', exact: true }).fill('服务存活检查');
   await expect(page.getByText('共 1 个接口', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '查看 服务存活检查', exact: true }).click();
@@ -121,29 +122,35 @@ try {
   await page.screenshot({ animations: 'disabled', path: `${out}/api-desktop.png` });
   assert.equal(new URL(page.url()).hash, '#/api', 'Scalar navigation must not replace the application hash');
 
+  await page.getByRole('button', { name: '账户菜单', exact: true }).click();
+  await page.getByRole('menuitem', { name: '当前账户', exact: true }).click();
+  await expectPageTitle('当前账户');
+  await page.goto(url(consolePath + '#/missing-page'));
+  await expectPageTitle('页面不存在');
+
   // Wait for the native responsive layout before operating its mobile drawer.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(url(consolePath + '#/datasets'));
-  await expect(page.getByRole('heading', { name: '数据集', exact: true })).toBeVisible();
-  if (vben) await expect(page.locator('[data-layout-region="layout"]')).toHaveAttribute('data-mobile', 'true');
+  await expectPageTitle('数据集');
+  await expectIntroGap(12);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No page-wide horizontal overflow');
   await page.screenshot({ animations: 'disabled', path: `${out}/datasets-mobile.png` });
   const toggle = page.getByRole('button', { name: /打开侧边栏|Open sidebar|切换侧边栏/ });
-  if (vben) await page.locator('[data-layout-action="toggle-sidebar"]:visible').click();
-  else if (await toggle.count()) await toggle.click();
+  if (await toggle.count()) await toggle.click();
   else await page.locator('[data-slot="toggle"]').click();
   await navigate('服务配置');
-  await expect(page.getByRole('heading', { name: '服务配置', exact: true })).toBeVisible();
+  await expectPageTitle('服务配置');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: vben ? 'dark' : '切换明暗主题', exact: true }).click();
+  await page.getByRole('button', { name: '切换明暗主题', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
   await page.screenshot({ animations: 'disabled', path: `${out}/configuration-mobile-dark.png` });
 
-  await page.goto(url((vben ? '/admin' : '/admin/vben') + '#/datasets'));
-  await expect(page.getByRole('heading', { name: '数据集', exact: true })).toBeVisible();
+  await page.goto(url('/admin/vben#/datasets'));
+  await expect(page).toHaveURL(url('/admin#/datasets'));
+  await expectPageTitle('数据集');
   await expect(page.getByRole('button', { name: '登录', exact: true })).toHaveCount(0);
   await page.goto(url(consolePath + '#/configuration'));
-  await expect(page.getByRole('heading', { name: '服务配置', exact: true })).toBeVisible();
+  await expectPageTitle('服务配置');
 
   // A revoked server session must remove private content immediately on the next read.
   assert.equal((await api.post(url('/admin/api/auth/logout'), { headers })).status(), 200);
@@ -160,8 +167,7 @@ try {
       if ((await api.get(url('/admin/api/auth/session'))).status() === 401) {
         let login = await api.post(url('/admin/api/auth/login'), { headers, data: { username: 'admin', password: 'password' } });
         if (login.status() === 429) {
-          // Consecutive frontend suites share the real login limiter. Honor
-          // its retry window before cleaning up; never weaken the binding.
+          // Honor the real login limiter's retry window before cleaning up.
           const seconds = Number(login.headers()['retry-after']);
           assert.ok(Number.isFinite(seconds) && seconds > 0 && seconds <= 60);
           await new Promise(resolve => setTimeout(resolve, seconds * 1000));

@@ -23,7 +23,7 @@ useEventListener(window, 'message', event => {
 function openOperation(id: string) { selected.value = id; tab.value = 'reference'; }
 </script>
 <template>
-  <div class="page-heading"><div><h1>API 中心</h1><p>CookieCloud 同步协议与管理接口。</p></div><UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="busy" @click="refresh">刷新文档</UButton></div>
+  <div class="page-intro"><p>CookieCloud 同步协议与管理接口。</p><UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="busy" @click="refresh">刷新文档</UButton></div>
   <UAlert v-if="error" color="error" :description="error" :actions="[{ label: '重试', onClick: refresh }]" />
   <UTabs v-model="tab" :items="[{ label: '接口列表', value: 'list', slot: 'list' }, { label: '交互文档', value: 'reference', slot: 'reference' }]" class="w-full">
     <template #list>

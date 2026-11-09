@@ -7,7 +7,4 @@ await build();
 await build({ configFile: false, define: { 'process.env.NODE_ENV': JSON.stringify('production') }, build: { outDir: 'public/admin-assets', emptyOutDir: false,
   target: 'es2022', lib: { entry: 'frontend/reference.ts', formats: ['es'], fileName: () => 'reference.js', cssFileName: 'reference' },
 } });
-await copyFile('frontend/favicon.svg', 'public/admin-assets/favicon.svg');
-
-// Vben's pinned upstream workspace builds into its own static asset directory.
-await import('./build-vben.mjs');
+await copyFile('frontend/favicon.svg', 'public/admin-assets/cookieflare-icon.svg');

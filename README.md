@@ -204,7 +204,7 @@ The account menu opens the WorkerKit API center with a searchable catalog, metho
 ### Nuxt UI local preview
 
 ```bash
-npm run preview:nuxt
+npm run preview
 ```
 
 Open `http://127.0.0.1:8798/admin` and sign in with `admin` / `password`.
@@ -215,16 +215,8 @@ The UI and API are served by one Worker. Cookieflare keeps its lightweight nativ
 With Google Chrome installed and the local preview running, `npm run test:console` checks actual Chromium rendering and authenticated HTTP behavior, including pagination, confirmed deletion, retry, mobile navigation, same-origin API documentation, and session revocation. It only permits loopback URLs and cleans up its own synthetic snapshots. To test `API_ROOT=/sync` on another local instance, set `CONSOLE_URL=http://127.0.0.1:8799/sync`. Browser screenshots are written to ignored `test-results/`.
 
 
-### Compare Vben Admin
+### WorkerKit 0.5 upgrade verification
 
-The same Worker serves Vben at `http://127.0.0.1:8798/admin/vben`. The header links switch between Vben and Nuxt UI while sharing the real API, HttpOnly session, and KV data. Vben uses its upstream layout, tabs, preferences, and native Ant Design Vue components. Content caching and tab persistence are disabled by default so logout clears private page state.
+The submodule is pinned to `5eb6c60` (0.5.0). Run `npm run verify` for the unit tests and deployment dry-run, and `npm run test:console` against an isolated preview for the browser checks. The previous pin was `d19416e` (0.4.0). Existing `/admin/vben` bookmarks redirect to `/admin`.
 
-`npm run preview` builds both frontends and starts one local Worker. Run `npm run test:console` for Nuxt UI or `npm run test:console:vben` for Vben; both check cross-frontend session reuse. Vben business pages live in `frontend-vben/` and reuse framework-independent request/session/catalog modules from `frontend/`.
-
-The Vben build uses WorkerKit’s pinned upstream commit and pnpm workspace lockfile. Generated upstream source/dependencies stay in the submodule’s ignored `.wrangler/ui-build/` directory; shared example sources remain unchanged. pnpm is required, and the first build downloads and verifies upstream source and installs locked dependencies. `npm run build:vben` builds Vben alone; `npm run verify` builds and checks both frontends before deployment. No additional Worker or storage binding is required.
-
-### WorkerKit 0.4 upgrade verification
-
-The submodule is pinned to `d19416e` (0.4.0). Both consoles passed local browser checks and all 20 tests. Restoring the previous `a8778d6` pin, reinstalling and verifying, then returning to 0.4.0 also passed. CookieCloud business code, bindings, secrets and data did not change. This upgrade has not been deployed to Cookieflare production.
-
-To roll back shared source, check out the reviewed commit inside `vendor/worker-kit`, stage the gitlink with `git add vendor/worker-kit` so doctor can verify the selected pin, run `npm install`, then `npm run verify`. Commit only after those checks pass. Database or business-data rollback is separate. Consecutive browser suites honor the real login limiter's retry window during synthetic fixture cleanup.
+To roll back shared source, check out the reviewed commit inside `vendor/worker-kit`, stage the gitlink with `git add vendor/worker-kit` so doctor can verify the selected pin, run `npm install`, then `npm run verify`. Commit only after those checks pass. Database or business-data rollback is separate.

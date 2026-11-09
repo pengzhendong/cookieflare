@@ -8,3 +8,9 @@ ADMIN_PASSWORD="replace-with-a-long-random-password"
 
 # Optional administrator username. Defaults to admin when omitted.
 ADMIN_USERNAME="admin"
+
+# Optional Analytics credentials for the authenticated runtime page.
+# For production, configure the token as a Wrangler Secret.
+# CLOUDFLARE_ANALYTICS_ACCOUNT_ID=""
+# CLOUDFLARE_ANALYTICS_TOKEN=""
+# CLOUDFLARE_ANALYTICS_WORKER_NAME="cookieflare"

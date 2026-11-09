@@ -4,7 +4,7 @@ type Configuration = { apiRoot: string; storage: string; encryption: string; upl
 const { data, busy, error, refresh } = useResource<Configuration>('/configuration');
 </script>
 <template>
-  <div class="page-heading"><div><h1>服务配置</h1><p>查看当前部署的能力与认证状态。</p></div><UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="busy" @click="refresh">刷新配置</UButton></div>
+  <div class="page-intro"><p>查看当前部署的能力与认证状态。</p><UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="busy" @click="refresh">刷新配置</UButton></div>
   <UAlert v-if="error" color="error" :description="error" role="alert" :actions="[{ label: '重试', onClick: refresh }]" />
   <USkeleton v-else-if="!data" class="h-80 w-full" aria-label="正在读取服务配置" />
   <UCard v-else><dl class="details-list">

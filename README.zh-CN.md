@@ -204,7 +204,7 @@ Cookieflare 兼容 [easychen/CookieCloud](https://github.com/easychen/CookieClou
 ## Nuxt UI 本地预览
 
 ```bash
-npm run preview:nuxt
+npm run preview
 ```
 
 访问 `http://127.0.0.1:8798/admin`，用户名 `admin`，密码 `password`。预览命令只覆盖本地进程的管理员凭据，关闭本地可选上传令牌，KV 数据独立保存在 `.wrangler/nuxt-preview`，不改变线上数据和凭据。前端改动后需要重新构建并重启预览，让 Wrangler 注册新的静态资源。
@@ -216,16 +216,8 @@ WorkerKit 通过固定提交的 `vendor/worker-kit` submodule 接入，不复制
 安装 Google Chrome 并启动预览后，运行 `npm run test:console`，检查真实 Chromium 界面、登录权限、分页、确认删除、异常重试、移动端导航、接口文档和会话注销。脚本只允许本机地址，创建并清理自己的合成快照，不使用真实 Cookie。截图保存在忽略提交的 `test-results/`。测试带 `/sync` 前缀的另一预览实例时，可设置 `CONSOLE_URL=http://127.0.0.1:8799/sync`。
 
 
-### 对比 Vben Admin
+### WorkerKit 0.5 升级验证
 
-同一个 Worker 也提供 `http://127.0.0.1:8798/admin/vben`。顶部“切换 Vben / 切换 Nuxt UI”链接切换界面，两套界面共用 Cookieflare 的真实管理接口、登录会话和 KV 数据。Vben 使用上游原生布局、多标签页、偏好设置和 Ant Design Vue 业务组件；不复制 WorkerKit 示例业务。为了注销时清空页面状态，默认关闭标签页内容缓存和标签持久化。
+共享 submodule 固定为 `5eb6c60`（0.5.0）。用 `npm run verify` 跑单元测试和部署预检，用 `npm run test:console` 对隔离预览做浏览器验收。此前固定的是 `d19416e`（0.4.0）。已保存的 `/admin/vben` 书签会跳转到 `/admin`。
 
-运行 `npm run preview` 会构建两套界面并启动同一个本地 Worker。`npm run test:console` 检查 Nuxt UI，`npm run test:console:vben` 检查 Vben，包括跨界面免重复登录。
-
-Vben 业务源码保存在 `frontend-vben/`，公共请求、会话及接口目录逻辑复用 `frontend/` 的独立模块。构建复用 WorkerKit 的固定 Vben 上游提交和 pnpm 工作区锁文件；上游与依赖只生成在 submodule 的忽略目录 `.wrangler/ui-build/`，不改动共享示例源码。构建 Vben 需要 pnpm；首次构建会下载并校验上游源码、安装锁定依赖。单独运行 `npm run build:vben` 可重建 Vben；部署前 `npm run verify` 会构建并检查两套界面。无须增加新的 Worker 或存储绑定。
-
-### WorkerKit 0.4 升级验证
-
-共享 submodule 固定为 `d19416e`（0.4.0）。两套控制台通过本地浏览器验收及全部 20 项测试；恢复旧版 `a8778d6`、重新安装和检查，再返回新版也通过。CookieCloud 业务代码、绑定、Secret 和业务数据保持不变；本轮未部署 Cookieflare 生产服务。
-
-回滚共享源码时，在 `vendor/worker-kit` 内 checkout 审核过的提交，用 `git add vendor/worker-kit` 暂存 gitlink，供 doctor 检查所选版本，再执行 `npm install`、`npm run verify`，通过后提交。数据库及业务数据回滚另行处理。连续运行两套浏览器检查时，测试清理会遵守真实登录限流的重试窗口。
+回滚共享源码时，在 `vendor/worker-kit` 内 checkout 审核过的提交，用 `git add vendor/worker-kit` 暂存 gitlink，供 doctor 检查所选版本，再执行 `npm install`、`npm run verify`，通过后提交。数据库及业务数据回滚另行处理。

@@ -1,4 +1,4 @@
-import { adminApi, adminConsolePage } from "./admin";
+import { ADMIN_ICON_PATH, adminApi, adminConsolePage } from "./admin";
 import { adminUsername } from './credentials';
 import { COOKIE_STORE_PREFIX, keyForUuid, normalizeUuid } from "./keys";
 const MAX_COMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
@@ -24,6 +24,9 @@ export type WorkerEnv = Omit<
   ADMIN_USERNAME?: string;
   ADMIN_LOGIN_RATE_LIMITER?: RateLimitBinding;
   CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
+  CLOUDFLARE_ANALYTICS_ACCOUNT_ID?: string;
+  CLOUDFLARE_ANALYTICS_TOKEN?: string;
+  CLOUDFLARE_ANALYTICS_WORKER_NAME?: string;
   ASSETS?: Fetcher;
 };
 
@@ -509,12 +512,9 @@ async function handleGet(uuid: string, env: WorkerEnv): Promise<Response> {
   });
 }
 
-async function handleAdminPage(
-  request: Request,
-  env: WorkerEnv,
-): Promise<Response> {
+function handleAdminPage(apiRoot: string, env: WorkerEnv): Response {
   if (!env.ADMIN_PASSWORD) return adminTextResponse("Admin password is not configured", 503);
-  return adminConsolePage(normalizeApiRoot(env.API_ROOT), false, new URL(request.url).pathname.endsWith('/admin/vben') ? 'vben' : 'nuxt');
+  return adminConsolePage(apiRoot);
 }
 
 async function handleAdminStatus(
@@ -551,9 +551,11 @@ const worker: ExportedHandler<WorkerEnv> = {
 
     if (url.pathname === `${apiRoot}/admin/reference` && request.method === 'GET') return adminConsolePage(apiRoot, true);
 
-    if (url.pathname.startsWith(`${apiRoot}/admin-assets/`) && ['GET', 'HEAD'].includes(request.method)) {
+    const isFavicon = url.pathname === '/favicon.ico';
+    if ((isFavicon || url.pathname.startsWith(`${apiRoot}/admin-assets/`)) && ['GET', 'HEAD'].includes(request.method)) {
       if (!env.ASSETS) return textResponse('Not Found', 404);
-      const assetUrl = new URL(request.url); assetUrl.pathname = url.pathname.slice(apiRoot.length);
+      const assetUrl = new URL(request.url);
+      assetUrl.pathname = isFavicon ? ADMIN_ICON_PATH : url.pathname.slice(apiRoot.length);
       return env.ASSETS.fetch(new Request(assetUrl, { method: request.method }));
     }
     const adminResult = await adminApi(request, env, apiRoot);
@@ -565,8 +567,12 @@ const worker: ExportedHandler<WorkerEnv> = {
       return jsonResponse({ status: "OK", storage: "cloudflare-kv" });
     }
 
-    if (request.method === "GET" && [apiPath(apiRoot, ADMIN_PATH), apiPath(apiRoot, `${ADMIN_PATH}/vben`)].includes(url.pathname)) {
-      return handleAdminPage(request, env);
+    if (request.method === "GET" && url.pathname === apiPath(apiRoot, `${ADMIN_PATH}/vben`)) {
+      return Response.redirect(new URL(apiPath(apiRoot, ADMIN_PATH) + url.search, url).href, 302);
+    }
+
+    if (request.method === "GET" && url.pathname === apiPath(apiRoot, ADMIN_PATH)) {
+      return handleAdminPage(apiRoot, env);
     }
 
     if (

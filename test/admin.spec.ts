@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import worker, { type WorkerEnv } from '../src/index';
 const origin = 'https://cookies.test';
 function fixture(root = '') {
@@ -21,6 +21,37 @@ describe('Cookieflare management API', () => {
     expect((await fetch('/admin/api/auth/login', { method: 'POST', headers: { Origin: origin }, body: 'x'.repeat(5000) })).status).toBe(400);
     env.ADMIN_LOGIN_RATE_LIMITER = { limit: async () => ({ success: false }) };
     const response = await fetch('/admin/api/auth/login', { method: 'POST', headers: { Origin: origin }, body: '{}' }); expect(response.status).toBe(429); expect(response.headers.get('Retry-After')).toBe('60');
+  });
+  it('returns the configured Worker metrics without exposing the Analytics token', async () => {
+    const { fetch, env } = fixture();
+    const cookie = await login(fetch);
+    const headers = { cookie };
+    const readMetrics = () => fetch('/admin/api/runtime/metrics', { headers });
+    expect(await (await readMetrics()).json()).toMatchObject({ status: 'not-configured', requests: null });
+
+    env.CLOUDFLARE_ANALYTICS_ACCOUNT_ID = 'a'.repeat(32);
+    env.CLOUDFLARE_ANALYTICS_TOKEN = 'analytics-test-token';
+    env.CLOUDFLARE_ANALYTICS_WORKER_NAME = 'cookieflare-test';
+    const upstream = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json({
+      data: { viewer: { accounts: [{ workersInvocationsAdaptive: [{ sum: { requests: 12, errors: 1 } }] }] } },
+    }));
+    vi.stubGlobal('fetch', upstream);
+    try {
+      const response = await readMetrics();
+      const text = await response.text();
+      expect(JSON.parse(text)).toMatchObject({ status: 'ok', requests: 12, errors: 1 });
+      expect(text).not.toContain(env.CLOUDFLARE_ANALYTICS_TOKEN);
+      const [url, options] = upstream.mock.calls[0]!;
+      expect(url).toBe('https://api.cloudflare.com/client/v4/graphql');
+      expect(options?.redirect).toBe('manual');
+      expect(new Headers(options?.headers).get('authorization')).toBe('Bearer analytics-test-token');
+      expect(JSON.parse(String(options?.body)).variables).toMatchObject({
+        account: env.CLOUDFLARE_ANALYTICS_ACCOUNT_ID,
+        script: 'cookieflare-test',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
   it('lists only bounded metadata pages, excluding ciphertext, upload secrets and admin session keys', async () => {
     const { fetch, values, env } = fixture(); env.COOKIECLOUD_UPDATE_TOKEN = 'never-return-this-secret';
@@ -81,18 +112,13 @@ describe('Cookieflare management API', () => {
     expect(shell).not.toContain('console.js');
   });
 
-  it('serves Vben under the same API root and fails closed when admin credentials are missing', async () => {
+  it('redirects old console bookmarks to the admin page under the same API root', async () => {
     const { fetch, env } = fixture('/sync');
-    const page = await fetch('/admin/vben');
-    expect(page.status).toBe(200);
-    expect(page.headers.get('x-frame-options')).toBe('DENY');
-    const html = await page.text();
-    expect(html).toContain('/sync/admin-assets/vben/console.js');
-    expect(html).toContain('/sync/admin-assets/vben/console.css');
-    expect(html).toContain('data-api-root="/sync"');
-    expect((await fetch('/admin/api/datasets')).status).toBe(401);
+    const bookmark = await fetch('/admin/vben?from=bookmark');
+    expect(bookmark.status).toBe(302);
+    expect(bookmark.headers.get('location')).toBe(origin + '/sync/admin?from=bookmark');
     env.ADMIN_PASSWORD = '';
-    expect((await fetch('/admin/vben')).status).toBe(503);
+    expect((await fetch('/admin')).status).toBe(503);
   });
 
   it('uses the configured username for both session and legacy Basic authentication, invalidating prior identities', async () => {

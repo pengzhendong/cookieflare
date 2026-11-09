@@ -28,7 +28,7 @@ async function remove() {
 }
 </script>
 <template>
-  <div class="page-heading"><div><h1>数据集</h1><p>管理客户端上传的加密 CookieCloud 快照。</p></div><UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" :loading="busy" @click="refresh">刷新列表</UButton></div>
+  <div class="page-intro"><p>管理客户端上传的加密 CookieCloud 快照。</p><UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" :loading="busy" @click="refresh">刷新列表</UButton></div>
   <div class="grid sm:grid-cols-3 gap-4 mb-6">
     <UCard><p class="text-muted flex items-center gap-2"><UIcon name="i-lucide-database" />本页数据集</p><div class="metric-value">{{ data ? items.length : '—' }}</div></UCard>
     <UCard><p class="text-muted">本页密文大小</p><div class="metric-value">{{ data ? formatBytes(items.reduce((sum, item) => sum + (item.encryptedBytes || 0), 0)) : '—' }}</div></UCard>

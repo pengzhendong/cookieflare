@@ -10,7 +10,7 @@ watch(data, value => { if (value) history.value = [...history.value, { at: value
 useIntervalFn(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
 </script>
 <template>
-  <div class="page-heading"><div><h1>运行状态</h1><p>检查当前 Worker 与存储的真实连接状态。</p></div><UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" :loading="busy" @click="refresh">检查连接</UButton></div>
+  <div class="page-intro"><p>检查当前 Worker 与存储的真实连接状态。</p><UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" :loading="busy" @click="refresh">检查连接</UButton></div>
   <UAlert v-if="error" color="error" :description="error" role="alert" :actions="[{ label: '重试', onClick: refresh }]" class="mb-5" />
   <div v-if="!data && busy" role="status" class="text-muted mb-5">正在检查运行状态…</div>
   <template v-if="data">
