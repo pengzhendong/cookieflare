@@ -196,20 +196,20 @@ Released under the [GNU General Public License v3.0](LICENSE).
 
 ## Management console
 
-The console uses Nuxt UI and Vue Router. If you cloned without submodules, run `git submodule update --init --recursive` before running `npm ci` at the project root.
+The console uses WorkerKit, Ant Design, and ProComponents. If you cloned without submodules, run `git submodule update --init --recursive` before running `npm ci` at the project root.
 
 The data list reads at most 10 records per page, serially, and never polls storage automatically. UUIDs are access identifiers: do not share management screenshots containing real UUIDs.
 
 The account menu opens the API center with a searchable catalog, method/tag filters, request/response schemas, Scalar same-origin testing, and code examples. Both views share one OpenAPI document and support `API_ROOT`. Scalar is bundled from a pinned local npm package without a CDN or persistent credentials. Write requests change real data. This integration does not issue admin API tokens; existing upload credentials grant no admin access.
 
-### Nuxt UI local preview
+### Local console preview
 
 ```bash
 npm run preview
 ```
 
 Open `http://127.0.0.1:8798/admin` and sign in with `admin` / `password`.
-This command overrides credentials **only for the local process**, disables the optional upload token locally, and stores local KV data in `.wrangler/nuxt-preview`. Production credentials, bindings, and data are unchanged. Rebuild and restart the preview after frontend changes so Wrangler registers new hashed assets.
+This command overrides credentials **only for the local process**, disables the optional upload token locally, and stores local KV data in `.wrangler/console-preview`. Production credentials, bindings, and data are unchanged. Rebuild and restart the preview after frontend changes so Wrangler registers new hashed assets.
 
 One Cloudflare Worker serves the console and API, and Cloudflare KV stores the encrypted snapshots and management sessions.
 

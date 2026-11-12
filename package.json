@@ -12,34 +12,35 @@
     "dev": "npm run build:console && wrangler dev --local",
     "deploy": "npm run build:console && wrangler deploy --keep-vars",
     "types": "wrangler types",
-    "check": "npm run build:console && tsc --noEmit && vue-tsc -p tsconfig.web.json --noEmit && npm run doctor && wrangler deploy --dry-run",
+    "check": "npm run build:console && tsc --noEmit && tsc -p tsconfig.web.json --noEmit && npm run doctor && wrangler deploy --dry-run",
     "test": "vitest run",
     "verify": "npm run types && npm run check && npm test",
     "build:console": "node scripts/build-console.mjs",
     "doctor": "node vendor/worker-kit/src/tooling/doctor.mjs --project .",
     "test:console": "node scripts/check-console.mjs",
-    "preview": "npm run build:console && wrangler dev --local --ip 127.0.0.1 --port 8798 --inspector-port 9238 --persist-to .wrangler/nuxt-preview --var ADMIN_USERNAME:admin --var ADMIN_PASSWORD:password --var COOKIECLOUD_UPDATE_TOKEN:"
+    "preview": "npm run build:console && wrangler dev --local --ip 127.0.0.1 --port 8798 --inspector-port 9238 --persist-to .wrangler/console-preview --var ADMIN_USERNAME:admin --var ADMIN_PASSWORD:password --var COOKIECLOUD_UPDATE_TOKEN:"
   },
   "devDependencies": {
-    "@iconify-json/lucide": "1.2.151",
     "@playwright/test": "1.64.1",
     "@types/node": "26.6.5",
-    "@vitejs/plugin-vue": "6.0.10",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
     "typescript": "6.0.3",
     "vite": "8.3.5",
     "vitest": "4.1.12",
-    "vue-tsc": "3.3.14",
     "wrangler": "4.152.0"
   },
   "dependencies": {
-    "@nuxt/ui": "4.12.0",
+    "@ant-design/icons": "6.3.4",
+    "@ant-design/pro-components": "3.1.15-8",
     "@pengzhendong/worker-kit": "file:vendor/worker-kit",
     "@scalar/api-reference": "1.75.1",
-    "@vueuse/core": "14.3.0",
+    "antd": "6.6.7",
     "openapi-types": "12.1.3",
-    "semver": "7.8.5",
-    "tailwindcss": "4.3.4",
-    "vue": "3.5.45",
-    "vue-router": "4.6.4"
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-error-boundary": "6.1.6",
+    "semver": "7.8.5"
   }
 }

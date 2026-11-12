@@ -1,6 +1,7 @@
 import { createApiReference } from '@scalar/api-reference';
 import '@scalar/api-reference/style.css';
 import type { OpenAPIV3_1 as O } from 'openapi-types';
+import { referenceThemeCss } from './theme';
 const lifetime = new AbortController();
 window.addEventListener('pagehide', () => lifetime.abort(), { once: true });
 const root = document.querySelector<HTMLElement>('#root')!;
@@ -35,7 +36,7 @@ async function mount() {
       spec.tags = spec.tags?.filter(tag => usedTags.has(tag.name));
     }
     spec.servers = [{ url: location.origin }]; root.textContent = '';
-    const instance = createApiReference(root, { content: spec, theme: 'default', layout: 'classic', showSidebar: false, defaultOpenAllTags: true, defaultOpenFirstTag: true, forceDarkModeState: params.get('theme') === 'dark' ? 'dark' : 'light', hideDarkModeToggle: true, withDefaultFonts: false, persistAuth: false, telemetry: false, proxyUrl: '', agent: { disabled: true }, hideClientButton: true, showDeveloperTools: 'never', customCss: '.selected-client-action,.generate-sdk-button{display:none!important}', customFetch: referenceFetch, localization: { locale: 'zh-CN' } });
+    const instance = createApiReference(root, { content: spec, theme: 'default', layout: 'classic', showSidebar: false, defaultOpenAllTags: true, defaultOpenFirstTag: true, forceDarkModeState: params.get('theme') === 'dark' ? 'dark' : 'light', hideDarkModeToggle: true, withDefaultFonts: false, persistAuth: false, telemetry: false, proxyUrl: '', agent: { disabled: true }, hideClientButton: true, showDeveloperTools: 'never', customCss: referenceThemeCss + '.selected-client-action,.generate-sdk-button{display:none!important}', customFetch: referenceFetch, localization: { locale: 'zh-CN' } });
     window.addEventListener('pagehide', () => instance.destroy(), { once: true });
   } catch (error) {
     if (lifetime.signal.aborted) return;

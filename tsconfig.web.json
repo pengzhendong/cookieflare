@@ -13,16 +13,11 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx"
   },
   "include": [
     "frontend/**/*",
-    "vite.config.ts",
-    "auto-imports.d.ts",
-    "components.d.ts"
-  ],
-  "vueCompilerOptions": {
-    "strictTemplates": true,
-    "checkUnknownProps": false
-  }
+    "vite.config.ts"
+  ]
 }

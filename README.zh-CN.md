@@ -196,19 +196,19 @@ Cookieflare 兼容 [easychen/CookieCloud](https://github.com/easychen/CookieClou
 
 ## 管理后台
 
-后台使用 Nuxt UI 和 Vue Router。克隆时如果没有拉取子模块，先执行 `git submodule update --init --recursive`，再到项目根目录运行 `npm ci`。
+后台使用 WorkerKit、Ant Design 和 ProComponents。克隆时如果没有拉取子模块，先执行 `git submodule update --init --recursive`，再到项目根目录运行 `npm ci`。
 
 列表每页最多读取 10 个数据集，串行读取以限制大快照的峰值内存，不自动轮询。UUID 是客户端访问标识，分享后台截图时应隐藏真实 UUID。
 
 后台左下角用户菜单的“API 中心”提供接口列表和 Scalar 文档，支持搜索、方法/分组筛选、参数与响应 Schema、同源调试、调用代码示例。列表与文档共用一份 OpenAPI 声明，并支持 `API_ROOT` 前缀。Scalar 通过本地固定版本 npm 包构建，不从 CDN 加载，不保存认证输入。写请求会修改真实数据；文档不新增后台 Token 签发，既有上传令牌不授予后台权限。
 
-### Nuxt UI 本地预览
+### 后台本地预览
 
 ```bash
 npm run preview
 ```
 
-访问 `http://127.0.0.1:8798/admin`，用户名 `admin`，密码 `password`。预览命令只覆盖本地进程的管理员凭据，关闭本地可选上传令牌，KV 数据独立保存在 `.wrangler/nuxt-preview`，不改变线上数据和凭据。前端改动后需要重新构建并重启预览，让 Wrangler 注册新的静态资源。
+访问 `http://127.0.0.1:8798/admin`，用户名 `admin`，密码 `password`。预览命令只覆盖本地进程的管理员凭据，关闭本地可选上传令牌，KV 数据独立保存在 `.wrangler/console-preview`，不改变线上数据和凭据。前端改动后需要重新构建并重启预览，让 Wrangler 注册新的静态资源。
 
 同一个 Cloudflare Worker 提供管理界面和 API，Cloudflare KV 保存加密快照和后台会话。
 
