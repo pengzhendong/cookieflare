@@ -89,12 +89,10 @@ function Console() {
     username={session.username} accountItems={account} signingOut={signingOut}
     onAccountAction={key => { if (key === 'logout') void signOut(); else location.hash = key; }}
   >
-      <AppErrorBoundary key={page}>
-      <Flex vertical gap={12}>
-        {page === '/datasets' ? <Datasets /> : page === '/configuration' ? <Configuration /> :
+    <AppErrorBoundary key={page}>
+      {page === '/datasets' ? <Datasets /> : page === '/configuration' ? <Configuration /> :
           page === '/runtime' ? <Runtime /> : page === '/account' ? <Account username={session.username} /> :
           page === '/api' ? <ApiCenter /> : <Result status="404" title="找不到此页面" />}
-      </Flex>
     </AppErrorBoundary>
   </WorkerKitConsoleLayout>;
 }

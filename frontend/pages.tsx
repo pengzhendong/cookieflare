@@ -45,30 +45,32 @@ export function Datasets() {
     { title: '操作', valueType: 'option', render: (_, row) => <Button type="link" danger aria-label={`删除 ${row.uuid}`}
       onClick={() => { setDeleteError(''); setSelected(row); }}>删除</Button> },
   ];
-  return <Flex vertical gap={16}>
+  return <>
     <PageHeader title="数据集" description="管理客户端上传的加密 CookieCloud 快照。"
       actions={<Button loading={loading} onClick={refresh}>刷新列表</Button>} />
-    <div className="cookieflare-stats">
-      <StatCard title="本页数据集" value={data ? rows.length : '—'} />
-      <StatCard title="本页密文大小" value={data ? formatBytes(rows.reduce((sum, item) => sum + (item.encryptedBytes || 0), 0)) : '—'} />
-      <Card size="small"><Typography.Text strong>客户端加密</Typography.Text><p>后台只展示元数据，不解密或展示 Cookie 内容。</p></Card>
-    </div>
-    {error && <Alert type="error" title={error} action={<Button onClick={refresh}>重试</Button>} />}
-    <ProTable<Dataset> rowKey="uuid" columns={columns} dataSource={rows} loading={loading} search={false} options={false}
-      pagination={false} scroll={{ x: 720 }} locale={{ emptyText: '尚无加密快照，客户端首次同步后会显示在这里。' }}
-      footer={() => <Flex justify="space-between" gap={8} align="center" wrap>
-        <Typography.Text type="secondary">每页最多 10 条，KV 列表可能有短暂同步延迟。</Typography.Text>
-        <Space><Button disabled={history.length === 1 || loading || deleting} onClick={() => setHistory(value => value.slice(0, -1))}>上一页</Button>
-          <span>第 {history.length} 页</span><Button disabled={!data?.cursor || loading || deleting}
-            onClick={() => { if (data?.cursor) setHistory(value => [...value, data.cursor!]); }}>下一页</Button></Space>
-      </Flex>} />
+    <Flex vertical gap={16}>
+      <div className="cookieflare-stats">
+        <StatCard title="本页数据集" value={data ? rows.length : '—'} />
+        <StatCard title="本页密文大小" value={data ? formatBytes(rows.reduce((sum, item) => sum + (item.encryptedBytes || 0), 0)) : '—'} />
+        <Card size="small"><Typography.Text strong>客户端加密</Typography.Text><p>后台只展示元数据，不解密或展示 Cookie 内容。</p></Card>
+      </div>
+      {error && <Alert type="error" title={error} action={<Button onClick={refresh}>重试</Button>} />}
+      <ProTable<Dataset> rowKey="uuid" columns={columns} dataSource={rows} loading={loading} search={false} options={false}
+        pagination={false} scroll={{ x: 720 }} locale={{ emptyText: '尚无加密快照，客户端首次同步后会显示在这里。' }}
+        footer={() => <Flex justify="space-between" gap={8} align="center" wrap>
+          <Typography.Text type="secondary">每页最多 10 条，KV 列表可能有短暂同步延迟。</Typography.Text>
+          <Space><Button disabled={history.length === 1 || loading || deleting} onClick={() => setHistory(value => value.slice(0, -1))}>上一页</Button>
+            <span>第 {history.length} 页</span><Button disabled={!data?.cursor || loading || deleting}
+              onClick={() => { if (data?.cursor) setHistory(value => [...value, data.cursor!]); }}>下一页</Button></Space>
+        </Flex>} />
+    </Flex>
     <Modal open={!!selected} title="删除这个数据集？" okText="确认删除" okButtonProps={{ danger: true }} confirmLoading={deleting}
       onCancel={() => { if (!deleting) setSelected(undefined); }} onOk={remove}>
       <p>此操作删除服务端的加密快照，无法从后台撤销。客户端之后仍可重新上传。</p>
       <code>{selected?.uuid}</code>
       {deleteError && <Alert type="error" title={deleteError} />}
     </Modal>
-  </Flex>;
+  </>;
 }
 
 type ConfigurationData = {
