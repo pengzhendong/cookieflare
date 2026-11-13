@@ -15,6 +15,8 @@ Open source · Self-hosted · Encrypted payloads only
 ![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)
 ![GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
+<p><a href="https://cf.pzd17.top/admin">Open admin</a></p>
+
 </div>
 
 Cookieflare is an independent, serverless implementation of the [CookieCloud](https://github.com/easychen/CookieCloud) upload and download API. It runs on Cloudflare Workers and stores each client's encrypted payload in Cloudflare KV—without a NAS, VPS, or always-on computer.

@@ -15,6 +15,8 @@
 ![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)
 ![GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
+<p><a href="https://cf.pzd17.top/admin">打开后台</a></p>
+
 </div>
 
 Cookieflare 是 [CookieCloud](https://github.com/easychen/CookieCloud) 上传与下载接口的独立、无服务器实现。它运行在 Cloudflare Workers 上，并将每个客户端的加密数据保存到 Cloudflare KV，不需要 NAS、VPS 或常开电脑。
